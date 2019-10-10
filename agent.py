@@ -16,11 +16,10 @@ class Agent(object):
 
 
 class RandomAgent(Agent):
-    def __init__(self,action_size, action_low=-2., action_high=2., eval_seed=5):
-        self.action_low = action_low
-        self.action_high = action_high
-        self.action_size = action_size
-        self.eval_seed = 5
+    def __init__(self,action_space, observation_space):
+
+        self.action_space = action_space
+        self.observation_space = observation_space
 
         self.state = None
 
@@ -33,19 +32,18 @@ class RandomAgent(Agent):
             self.state = pickle.load(f)
 
     def select_action(self, state):
-        raise (self.action_high + self.action_low) / 2
+        raise (self.action_space.high + self.action_space.low) / 2
 
     def select_exploratory_action(self, state):
-        return np.random.uniform(self.action_low, self.action_high, self.action_size)
+        return np.random.uniform(self.action_space.low, self.action_space.high, self.action_space.shape)
 
-    def eval(self, env, n_episode=10, n_step=1000, seed=0, mean=True):
-        rewards = []
-
-        # env.seed(seed)
-
+    def eval(self, env, n_episode=10, n_step=1000, seed=5, mean=True):
+        # 4.1.5 エージェント評価用関数の実装
+        rewards = [] # 各エピソードの累積報酬を格納する
+        env.seed(seed)
         for e in range(n_episode):
             state = env.reset()
-            reward_sum = 0.
+            reward_sum = 0. # 累積報酬
             for i in range(n_step):
                 action = self.select_exploratory_action(state)
                 next_state, reward, done, info = env.step(action)
@@ -55,6 +53,7 @@ class RandomAgent(Agent):
                     break
             rewards.append(reward_sum)
         env.close()
+
         rewards = np.array(rewards)
         if mean:
             return rewards.mean()
@@ -64,20 +63,23 @@ class RandomAgent(Agent):
 
 
 class TQLAgent(Agent):
-    def __init__(self, state_dim, action_dim, state_size=10, action_size=9,
-                 lr=3e-4, gamma=0.99, eps=0.05, batch_size=256, max_iter=5e+5,
-                 state_low=-2, state_high=2, action_low=-2, action_high=2):
+    def __init__(self, action_space, observation_space, state_size=10, action_size=9,
+                 lr=3e-4, gamma=0.99, eps=0.05, batch_size=256, max_iter=5e+5):
         '''
-        :param state_dim: 状態の出力次元数
-        :param action_dim: 行動の出力次元数
-        :param state_size: 状態の出力次元数
-        :param action_size: 行動の出力次元数
+        :param action_space: 行動空間
+        :param observation_space: 状態空間
+        :param state_size: 行動空間の分割数
+        :param action_size: 状態空間の分割数
         :param lr: 学習率
         :param gamma: 割引報酬率
+        :param eps: eps-greedy法における確率
+        :param batch_size: バッチサイズ
+        :param max_iter: 最大ステップ数
         '''
 
-        self.state_dim = state_dim
-        self.action_dim = action_dim
+        self.action_space = action_space
+        self.observation_space = observation_space
+
         self.state_size = state_size
         self.action_size = action_size
 
@@ -87,15 +89,33 @@ class TQLAgent(Agent):
         self.batch_size = batch_size
         self.max_iter = max_iter
 
-        # 状態空間
-        self.state_space = np.random.normal(state_low,state_high,(state_size, state_dim))
-        # 行動空間
-        self.action_space = np.random.normal(action_low,action_high,(action_size, action_dim))
-
-        self.q_table = np.random.normal(0,1,(state_size, action_size)) * 1e-8
+        self.q_table = np.random.normal(0,1,(state_size**self.observation_space.shape[0], action_size**self.action_space.shape[0])) * 1e-8
         # Qテーブル Q[idx(s), idx(a)]
 
+
         self._elapsed_steps = 0
+
+        #TODO: index返すためのベクトルを作る
+        # np.linspaceでベクトル列を作成
+        # np.searchsorted でindexを返す
+        # divmod(np.searchsorted(a.ravel(), target), a.shape[1])[0]
+        self._action_index_ref = np.linspace(self.action_space.low, self.action_space.high, self.action_size).T
+        self._state_index_split = np.linspace(self.observation_space.low, self.observation_space.high, self.state_size).T
+
+
+    def _action_index(self, action):
+        '''
+        行動のインデックスを返す
+        '''
+
+        pass
+
+    def _state_index(self, state):
+        '''
+        状態のインデックスを返す
+        '''
+        pass
+
 
     def save_models(self, path):
         # Qテーブルを保存する。
@@ -110,7 +130,7 @@ class TQLAgent(Agent):
         self.q_table = q_table
 
     def select_action(self, state):
-        # actionを返す。
+        # ターゲット方策 π
         idx = np.argmax([self.q_table[state, j] for j in self.action_size])
         return self.lr * self.action_space[idx]
 

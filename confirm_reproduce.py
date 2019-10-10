@@ -19,6 +19,7 @@ def main():
 
     # 乱数シードの設定
     seed = 2
+    eval_seed = 5
     env = gym.make('Pendulum-v0')
     env.seed(seed)
     torch.manual_seed(seed)
@@ -30,7 +31,7 @@ def main():
     n_step = 1000
 
     # エージェントの作成
-    agent = Agent(action_size=(1,))
+    agent = Agent(action_space=env.action_space, observation_space=env.observation_space)
 
     # train step
     total_step = 0
@@ -48,13 +49,13 @@ def main():
                 break
 
         agent.save_models(os.path.join(save_dir, f'episode_{episode}.pickle'))
-
+    env.close()
 
     # eval step
     logger = []
     for episode in range(n_episode):
         agent.load_models(os.path.join(save_dir, f'episode_{episode}.pickle'))
-        eval_rewards = agent.eval(env=env, n_episode=10, mean=False)
+        eval_rewards = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10,seed=eval_seed, mean=False)
         logger.append(eval_rewards)
 
     # visualize

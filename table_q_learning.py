@@ -16,13 +16,13 @@ def main():
     env.seed(seed)
     seed_setting(seed)
 
-    agent = Agent()
-    state = env.reset()
-    for t in tqdm(range(1000)):
-        action = agent.select_exploratory_action(state)
-        next_state, reward, done, info = env.step(action)
-        agent.train(state, action, next_state, reward, done)
-        state = next_state
-        if done:
-            state = env.reset()
+    agent = Agent(action_space=env.action_space, observation_space=env.observation_space)
+    # state = env.reset()
+    # for t in tqdm(range(1000)):
+    #     action = agent.select_exploratory_action(state)
+    #     next_state, reward, done, info = env.step(action)
+    #     agent.train(state, action, next_state, reward, done)
+    #     state = next_state
+    #     if done:
+    #         state = env.reset()
     env.close()
