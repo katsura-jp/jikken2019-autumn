@@ -17,3 +17,13 @@ class ReplayBuffer:
             if not self.buffer.empty():
                 contents.append(self.buffer.pop())
         return contents
+
+    def empty(self):
+        return self.buffer.empty()
+
+    def full(self):
+        return self.buffer.full()
+
+    def __len__(self):
+        return self.buffer.qsize()
+

@@ -8,9 +8,9 @@ class Agent(object):
     def load_models(self, path):
         pass
     def select_action(self, state):
-        raise NotImplementedError
+        pass
     def select_exploratory_action(self, state):
-        raise NotImplementedError
+        pass
     def train(self, state, action, next_state, reward, done):
         pass
 
@@ -32,7 +32,7 @@ class RandomAgent(Agent):
             self.state = pickle.load(f)
 
     def select_action(self, state):
-        raise (self.action_space.high + self.action_space.low) / 2
+        return (self.action_space.high + self.action_space.low) / 2
 
     def select_exploratory_action(self, state):
         return np.random.uniform(self.action_space.low, self.action_space.high, self.action_space.shape)
@@ -46,6 +46,7 @@ class RandomAgent(Agent):
             reward_sum = 0. # 累積報酬
             for i in range(n_step):
                 action = self.select_exploratory_action(state)
+                # action = self.select_action(state)
                 next_state, reward, done, info = env.step(action)
                 reward_sum += reward
                 state = next_state
@@ -116,7 +117,7 @@ class TQLAgent(Agent):
     def save_models(self, path):
         '''Qテーブルを保存する。'''
         with open(path, 'wb') as f:
-            pickle.dump(self.q_table)
+            pickle.dump(self.q_table, f)
 
     def load_models(self, path):
         # Qテーブルを読み込む。
@@ -144,12 +145,46 @@ class TQLAgent(Agent):
         state_index = self._state_index(state)
         action_index = self._action_index(action)
 
-        if done:
-            # ここで何するの?
-            pass
-        else:
-            omega = reward \
-                    + self.gamma * np.max([self.q_table[next_state_index, j] for j in range(self.q_table.shape[1])]) \
-                    - self.q_table[state_index, action_index]
+        omega = reward \
+                + self.gamma * np.max([self.q_table[next_state_index, j] for j in range(self.q_table.shape[1])]) \
+                - self.q_table[state_index, action_index]
 
-            self.q_table[state_index, action_index] = self.q_table[state_index, action_index] + self.lr * omega
+        self.q_table[state_index, action_index] = self.q_table[state_index, action_index] + self.lr * omega
+
+    def eval(self, env,  n_episode=10,  seed=5, mean=True):
+        rewards = []  # 各エピソードの累積報酬を格納する
+        env.seed(seed)
+        for e in range(n_episode):
+            state = env.reset()
+            reward_sum = 0. # 累積報酬
+            while True:
+                action = self.select_exploratory_action(state)
+                # action = self.select_action(state)
+
+                next_state, reward, done, info = env.step(action)
+                reward_sum += reward
+                state = next_state
+                if done:
+                    break
+            rewards.append(reward_sum)
+        env.close()
+        rewards = np.array(rewards)
+
+        if mean:
+            return rewards.mean()
+        else:
+            return rewards
+
+
+def test_tqagent():
+    env = gym.make('Pendulum-v0')
+    agent = TQLAgent(action_space=env.action_space, observation_space=env.observation_space,state_size=10, action_size=9,
+                 lr=3e-4, gamma=0.99, eps=0.05)
+    print(agent.q_table.shape)
+    print(agent._state_index(env.observation_space.low))
+    print(agent._state_index(env.observation_space.high))
+    print(agent._action_index(env.action_space.low))
+    print(agent._action_index(env.action_space.high))
+
+if __name__ == '__main__':
+    test_tqagent()

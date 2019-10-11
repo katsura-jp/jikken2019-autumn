@@ -16,7 +16,7 @@ def main():
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     save_dir = os.path.join('./log/conf-reproduce', now)
     os.makedirs(save_dir, exist_ok=True)
-
+    print(f'save directory `{save_dir}`')
     # 乱数シードの設定
     seed = 2
     eval_seed = 5
@@ -64,8 +64,6 @@ def main():
     plt.xlabel('episode')
     plt.ylabel('reward')
     plt.show()
-
-    env.close()
 
 if __name__ == '__main__':
     main()
