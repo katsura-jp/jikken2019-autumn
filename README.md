@@ -1,6 +1,12 @@
 # jikken2019-autumn
 主専攻実験（秋）　強化学習
 
+### ToDo
+
+- `done=True`の時にtrainメソッドでどう処理すればいいのかを確認
+
+
+
 ## Agent
 ### テーブルQ学習
 ### Actor-Critic

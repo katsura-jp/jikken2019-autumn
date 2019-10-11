@@ -14,13 +14,14 @@ from agent import RandomAgent as Agent
 def main():
     # 実験の日時とディレクトリ作成
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    save_dir = os.path.join('./log', now)
+    save_dir = os.path.join('./log/conf-reproduce', now)
     os.makedirs(save_dir, exist_ok=True)
 
     # 乱数シードの設定
     seed = 2
     eval_seed = 5
     env = gym.make('Pendulum-v0')
+
     env.seed(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
