@@ -16,6 +16,7 @@ class Agent(object):
 
 
 class RandomAgent(Agent):
+    '''ランダムエージェント'''
     def __init__(self,action_space, observation_space):
 
         self.action_space = action_space
@@ -64,6 +65,9 @@ class RandomAgent(Agent):
 
 
 class TQLAgent(Agent):
+    '''
+    テーブルQ学習のエージェント.
+    '''
     def __init__(self, action_space, observation_space, state_size=10, action_size=9,
                  lr=3e-4, gamma=0.99, eps=0.05):
         '''
@@ -101,7 +105,8 @@ class TQLAgent(Agent):
 
 
     def _action_index(self, action):
-        '''行動のインデックスを返す'''
+        '''行動のインデックスを返す
+        代表点にもっとも近いindexを返す'''
         index = (np.argmin(np.abs(self._action_index_ref - action), axis=0) * self._action_power).sum()
         return index
 
@@ -141,14 +146,19 @@ class TQLAgent(Agent):
             return self._action_index_ref[index]
 
     def train(self, state, action, next_state, reward, done):
+        # doneは特に使わない。
+
+        # actionとstateのindexを取得する。
         next_state_index = self._state_index(next_state)
         state_index = self._state_index(state)
         action_index = self._action_index(action)
 
+        # パラメータの変化率
         omega = reward \
                 + self.gamma * np.max([self.q_table[next_state_index, j] for j in range(self.q_table.shape[1])]) \
                 - self.q_table[state_index, action_index]
 
+        # Qテーブルの更新
         self.q_table[state_index, action_index] = self.q_table[state_index, action_index] + self.lr * omega
 
     def eval(self, env,  n_episode=10,  seed=5, mean=True):
@@ -174,6 +184,9 @@ class TQLAgent(Agent):
             return rewards.mean()
         else:
             return rewards
+
+
+# Actor-Critic
 
 
 def test_tqagent():

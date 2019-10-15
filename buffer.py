@@ -13,10 +13,10 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         contents = list()
-        for _ in batch_size:
+        for _ in range(batch_size):
             if not self.buffer.empty():
-                contents.append(self.buffer.pop())
-        return contents
+                contents.append(self.buffer.get())
+        return iter(contents)
 
     def empty(self):
         return self.buffer.empty()
