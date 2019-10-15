@@ -135,7 +135,7 @@ class TQLAgent(Agent):
         '''ターゲット方策πを返す'''
         state_index = self._state_index(state)
         index = np.argmax([self.q_table[state_index, j] for j in range(self.q_table.shape[1])])
-        return self.lr * self._action_index_ref[index]
+        return self._action_index_ref[index]
 
     def select_exploratory_action(self, state):
         # 行動方策からアクションをサンプルする。 $\alpha \textasciitilde \beta(\alpha ; \pi(state))$

@@ -9,8 +9,6 @@ import numpy as np
 import torch
 import gym
 
-from gym import spaces
-
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
@@ -149,8 +147,8 @@ def main():
 
     env.close()
     # -- 評価 --
-    rewards = []
     for seed in seeds:
+        rewards = []
         for episode in save_episodes:
             agent.load_models(os.path.join(save_dir, f'qtable_{seed}_{episode}.pickle'))
             reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=5, mean=False)

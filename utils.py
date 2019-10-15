@@ -3,6 +3,9 @@ import random
 import numpy as np
 import torch
 
+# TODO: Timerの実装
+# TODO: Loggerの実装
+
 def seed_setting(seed=1029):
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
