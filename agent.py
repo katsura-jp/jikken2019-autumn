@@ -90,19 +90,26 @@ class TQLAgent(Agent):
         self.gamma = gamma
         self.eps = eps
 
-        self.q_table = np.random.normal(0, 1,(state_size**self.observation_space.shape[0], action_size**self.action_space.shape[0])) * 1e-8
+        self._init_q_table()
         # Qテーブル Q[idx(s), idx(a)]
-
+        print(f'state space dimention : {self.observation_space.shape[0]}')
+        print(f'action space dimention : {self.action_space.shape[0]}')
+        print(f'Q table size : {self.q_table.shape}')
         # indexの参照
         # action_index_refはactionの部分空間でもある
 
-        action_margin = (self.action_space.high - self.action_space.low) / (self.action_size*2)
-        state_margin = (self.observation_space.high - self.observation_space.low) / (self.state_size*2)
+        action_margin = (self.action_space.high - self.action_space.low) / (self.action_size*2 + 1)
+        state_margin = (self.observation_space.high - self.observation_space.low) / (self.state_size*2 + 1)
         self._action_index_ref = np.linspace(self.action_space.low + action_margin, self.action_space.high - action_margin, self.action_size)
         self._state_index_ref  = np.linspace(self.observation_space.low + state_margin, self.observation_space.high - state_margin, self.state_size)
         self._action_power = np.power(self.action_size, np.arange(self.action_space.shape[0]))
         self._state_power = np.power(self.state_size, np.arange(self.observation_space.shape[0]))
 
+        #NOTE: デバッグ用
+        # Qテーブルの更新回数を保存
+        self.update_q_table = np.zeros(self.q_table.shape, dtype=np.uint)
+        self.update_state = np.zeros(self.q_table.shape[0], dtype=np.uint)
+        self.update_action = np.zeros(self.q_table.shape[1], dtype=np.uint)
 
     def _action_index(self, action):
         '''行動のインデックスを返す
@@ -134,11 +141,11 @@ class TQLAgent(Agent):
     def select_action(self, state):
         '''ターゲット方策πを返す'''
         state_index = self._state_index(state)
-        index = np.argmax([self.q_table[state_index, j] for j in range(self.q_table.shape[1])])
+        index = np.argmax(self.q_table[state_index,:])
         return self._action_index_ref[index]
 
     def select_exploratory_action(self, state):
-        # 行動方策からアクションをサンプルする。 $\alpha \textasciitilde \beta(\alpha ; \pi(state))$
+        '''行動方策からアクションをサンプルする。'''
         if np.random.rand() > self.eps:
             return self.select_action(state)
         else:
@@ -154,25 +161,31 @@ class TQLAgent(Agent):
         action_index = self._action_index(action)
 
         # パラメータの変化率
-        omega = reward \
-                + self.gamma * np.max([self.q_table[next_state_index, j] for j in range(self.q_table.shape[1])]) \
+        delta = reward \
+                + self.gamma * np.max(self.q_table[next_state_index,:]) \
                 - self.q_table[state_index, action_index]
 
         # Qテーブルの更新
-        self.q_table[state_index, action_index] = self.q_table[state_index, action_index] + self.lr * omega
+        self.q_table[state_index, action_index] = self.q_table[state_index, action_index] + self.lr * delta
 
-    def eval(self, env,  n_episode=10,  seed=5, mean=True):
+        # 更新回数をインクリメント
+        self.update_q_table[state_index, action_index] += 1
+        self.update_state[state_index] += 1
+        self.update_action[action_index] += 1
+
+
+    def eval(self, env, n_episode=10, seed=5, mean=True):
         rewards = []  # 各エピソードの累積報酬を格納する
         env.seed(seed)
         for e in range(n_episode):
             state = env.reset()
             reward_sum = 0. # 累積報酬
             while True:
-                action = self.select_exploratory_action(state)
-                # action = self.select_action(state)
+                # action = self.select_exploratory_action(state)
+                action = self.select_action(state)
 
                 next_state, reward, done, info = env.step(action)
-                reward_sum += reward
+                reward_sum += self.gamma * reward
                 state = next_state
                 if done:
                     break
