@@ -9,7 +9,12 @@ class ReplayBuffer:
         self.buffer = list()
 
     def add(self, state, action, next_state, reward, done):
-        self.buffer.append([state, action, next_state, reward, done])
+        if self.buffer_size > len(self.buffer):
+            self.buffer.append([state, action, next_state, reward, done])
+        else:
+            # FIFO(First In, First Out)
+            del self.buffer[0]
+            self.buffer.append([state, action, next_state, reward, done])
 
     def sample(self, batch_size):
         indice = np.random.randint(len(self.buffer), size=batch_size)
