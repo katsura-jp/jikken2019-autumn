@@ -1,6 +1,11 @@
 import numpy as np
 import pickle
 import gym
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.distributions.normal as normal
+
 
 class Agent(object):
     def save_models(self, path):
@@ -201,6 +206,80 @@ class TQLAgent(Agent):
 
 # Actor-Critic
 
+class ActorNet(nn.Module):
+    '''actionを返すモデル'''
+    def __init__(self, action_space, inplaces, places, hidden_dim=256):
+        '''
+        :param action_space: 行動部分空間
+        :param inplaces: 入力の次元数(stateの次元)
+        :param places: 出力の次元(actionの次元)
+        :param hidden_dim: 隠れ層の次元数
+        '''
+        super(ActorNet, self).__init__()
+
+        self.action_space = action_space
+        self.hidden_dim = hidden_dim
+
+        # ノイズ
+        d = torch.diag(torch.tensor(self.action_space.high - self.action_space.low)).type(torch.float32)
+        self.norm = normal.Normal(torch.zeros(d.shape), d)
+
+        # NN(Actorは2層)
+        self.fc1 = nn.Linear(inplaces, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, places)
+        self.relu = nn.ReLU(inplace=True)
+        self.tanh = ActorCriticTanh(self.action_space.high, self.action_space.low)
+
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.tanh(x)
+        if self.training:
+            x = x + self._get_noise()
+        return x
+
+    def _get_noise(self):
+        noise = self.norm.sample()
+        for i in range(noise.shape[0]):
+            noise[i] = noise.clamp(self.action_space.low[i], self.action_space.high[i])
+        return noise
+
+class CriticNet(nn.Module):
+    '''Q値を返すモデル'''
+    def __init__(self, inplaces, places, hidden_dim=256):
+        '''
+        :param inplaces: 入力の次元数(stateの次元 + actionの次元)
+        :param places: 出力の次元(1次元)
+        :param hidden_dim: 隠れ層の次元数
+        '''
+        super(CriticNet, self).__init__()
+
+        # NN(Actorは2層)
+        self.fc1 = nn.Linear(inplaces, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, places)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self,x):
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.fc3(x)
+
+        return x
+
+
+class ActorCriticTanh(nn.Module):
+    def __init__(self, high, low):
+        super(ActorCriticTanh, self).__init__()
+        self.high = torch.tensor(high)
+        self.low = torch.tensor(low)
+        self.tanh = nn.Tanh()
+
+    def forward(self, x):
+        x = (self.high + self.low) / 2 + ((self.high - self.low) / 2) * self.tanh(x)
+        return x
 
 def test_tqagent():
     env = gym.make('Pendulum-v0')
@@ -212,5 +291,74 @@ def test_tqagent():
     print(agent._action_index(env.action_space.low))
     print(agent._action_index(env.action_space.high))
 
+
+def test_actor_critic():
+    import pdb; pdb.set_trace()
+    gamma = 0.99
+
+    env = gym.make('Pendulum-v0')
+    action_dim = env.action_space.shape[0]
+    state_dim = env.observation_space.shape[0]
+
+    actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
+    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=1e-4)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=1e-4)
+
+    state = env.reset()
+    action = env.action_space.sample()
+    next_state, reward, done, info = env.step(action)
+
+    # sample
+    state = torch.tensor(state).type(torch.float32)
+    state = torch.stack([state, state], dim=0)
+    if state.ndim == 1:
+        state = state.unsqueeze(dim=0)
+    action = torch.tensor(action).type(torch.float32)
+    action = torch.stack([action, action], dim=0)
+    if action.ndim == 1:
+        action = action.unsqueeze(dim=0)
+    next_state = torch.tensor(next_state).type(torch.float32)
+    next_state = torch.stack([next_state, next_state], dim=0)
+    if next_state.ndim == 1:
+        next_state = next_state.unsqueeze(dim=0)
+    reward = torch.tensor(reward).type(torch.float32)
+    reward = torch.stack([reward, reward], dim=0)
+    if reward.ndim < 2:
+        reward = reward.view(-1, 1)
+        # reward = reward.unsqueeze(dim=0)
+
+    x = torch.cat([next_state, actor(state)], dim=1)
+    delta = reward + gamma * critic(x)
+    x = torch.cat([state, action], dim=1)
+    critic_loss = torch.pow(delta - critic(x), 2).mean()
+    critic_optim.zero_grad()
+    critic_loss.backward()
+    critic_optim.step()
+
+    x = torch.cat([state, actor(state)], dim=1)
+    actor_loss = critic(x).mean()
+    actor_optim.zero_grad()
+    actor_loss.backward()
+    actor_optim.step()
+
+
+
+def test_critic():
+    env = gym.make('Pendulum-v0')
+    action_dim = env.action_space.shape[0]
+    state_dim = env.observation_space.shape[0]
+    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
+    state = env.reset()
+    action = env.action_space.sample()
+    next_state, reward, done, info = env.step(action)
+
+    state = torch.tensor(state)
+    action = torch.tensor(action)
+    x = torch.cat([])
+    critic()
+
+
 if __name__ == '__main__':
-    test_tqagent()
+    # test_tqagent()
+    test_actor_critic()
