@@ -1,6 +1,5 @@
-import random
 import numpy as np
-import queue
+import torch
 
 
 class ReplayBuffer:
@@ -26,3 +25,60 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
+
+
+def collate_buffer(buffer, batch_size):
+    states = []
+    actions = []
+    next_states = []
+    rewards = []
+    dones = []
+    for state, action, next_state, reward, done in buffer.sample(batch_size):
+        states.append(torch.tensor(state, dtype=torch.float32))
+        actions.append(torch.tensor(action, dtype=torch.float32))
+        next_states.append(torch.tensor(next_state, dtype=torch.float32))
+        rewards.append(torch.tensor([reward], dtype=torch.float32))
+        dones.append(torch.tensor([done], dtype=torch.bool))
+        # states.append(state)
+        # actions.append(action)
+        # next_states.append(next_state)
+        # rewards.append(reward)
+        # dones.append(done)
+
+    states = torch.stack(states, dim=0)
+    actions = torch.stack(actions, dim=0)
+    next_states = torch.stack(next_states, dim=0)
+    rewards = torch.stack(rewards, dim=0)
+    dones = torch.stack(dones, dim=0)
+    import pdb; pdb.set_trace()
+
+    return states, actions, next_states, rewards, dones
+
+
+def test_replay_buffer():
+    import gym
+    env = gym.make('Pendulum-v0')
+
+    buffer = ReplayBuffer(1000)
+    state = env.reset()
+    for _ in range(500):
+        action = env.action_space.sample()
+        next_state, reward, done, info = env.step(action)
+
+        # cast to torch.tensor
+        # state = torch.tensor(state, dtype=torch.float32)
+        # action = torch.tensor(action, dtype=torch.float32)
+        # next_state = torch.tensor(next_state, dtype=torch.float32)
+        # reward = torch.tensor([reward], dtype=torch.float32)
+        # done = torch.tensor([done], dtype=torch.bool)
+
+        buffer.add(state, action, next_state, reward, done)
+        state = next_state
+
+    states, actions, next_states, rewards, dones = collate_buffer(buffer, 64)
+
+
+
+
+if __name__ == '__main__':
+    test_replay_buffer()

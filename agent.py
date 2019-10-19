@@ -208,7 +208,7 @@ class TQLAgent(Agent):
 
 class ActorNet(nn.Module):
     '''actionを返すモデル'''
-    def __init__(self, action_space, inplaces, places, hidden_dim=256):
+    def __init__(self, action_space, inplaces, places, hidden_dim=256, omega=0.1):
         '''
         :param action_space: 行動部分空間
         :param inplaces: 入力の次元数(stateの次元)
@@ -219,9 +219,11 @@ class ActorNet(nn.Module):
 
         self.action_space = action_space
         self.hidden_dim = hidden_dim
+        self.omega = omega
 
         # ノイズ
-        d = torch.diag(torch.tensor(self.action_space.high - self.action_space.low)).type(torch.float32)
+        # d = torch.diag(torch.tensor(self.action_space.high - self.action_space.low) * omega / 2).type(torch.float32)
+        d = (torch.tensor(self.action_space.high - self.action_space.low) * omega / 2).type(torch.float32)
         self.norm = normal.Normal(torch.zeros(d.shape), d)
 
         # NN(Actorは2層)
@@ -237,14 +239,25 @@ class ActorNet(nn.Module):
         x = self.fc2(x)
         x = self.tanh(x)
         if self.training:
-            x = x + self._get_noise()
+            x = x + self._get_noise(x.shape[0])
+        x = self.clamp(x)
         return x
 
-    def _get_noise(self):
-        noise = self.norm.sample()
-        for i in range(noise.shape[0]):
-            noise[i] = noise.clamp(self.action_space.low[i], self.action_space.high[i])
+    def _get_noise(self, bs):
+        noise = self.norm.sample(sample_shape=torch.Size([bs]))
         return noise
+
+    def clamp(self, x):
+        for i in range(x.shape[1]):
+            x[:,i] = x[:,i].clamp(self.action_space.low[i], self.action_space.high[i])
+        return x
+
+    def save_models(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load_models(self, path):
+        self.load_state_dict(torch.load(path))
+
 
 class CriticNet(nn.Module):
     '''Q値を返すモデル'''
@@ -269,6 +282,12 @@ class CriticNet(nn.Module):
 
         return x
 
+    def save_models(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load_models(self, path):
+        self.load_state_dict(torch.load(path))
+
 
 class ActorCriticTanh(nn.Module):
     def __init__(self, high, low):
@@ -280,6 +299,9 @@ class ActorCriticTanh(nn.Module):
     def forward(self, x):
         x = (self.high + self.low) / 2 + ((self.high - self.low) / 2) * self.tanh(x)
         return x
+
+
+# --- test codes ---
 
 def test_tqagent():
     env = gym.make('Pendulum-v0')
@@ -328,6 +350,7 @@ def test_actor_critic():
         reward = reward.view(-1, 1)
         # reward = reward.unsqueeze(dim=0)
 
+
     x = torch.cat([next_state, actor(state)], dim=1)
     delta = reward + gamma * critic(x)
     x = torch.cat([state, action], dim=1)
@@ -342,6 +365,29 @@ def test_actor_critic():
     actor_loss.backward()
     actor_optim.step()
 
+def test_random_sample():
+    from buffer import ReplayBuffer, collate_buffer
+    device = 'cpu'
+    gamma = 0.99
+    batch_size = 64
+    env = gym.make('Pendulum-v0')
+    action_dim = env.action_space.shape[0]
+    state_dim = env.observation_space.shape[0]
+
+    actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
+    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=1e-4)
+    critic_optim = torch.optim.Adam(critic.parameters(), lr=1e-4)
+    buffer = ReplayBuffer(1000)
+    state = env.reset()
+    # import pdb; pdb.set_trace()
+    for i in range(100):
+        actions = actor(torch.tensor(state, dtype=torch.float32).to(device))
+        action = actions[0].detach().numpy()
+        next_state, reward, done, info = env.step(action)
+        buffer.add(state, action, next_state, reward, done)
+    import pdb; pdb.set_trace()
+    states, actions, next_states, rewards, dones = collate_buffer(buffer, batch_size)
 
 
 def test_critic():
@@ -361,4 +407,5 @@ def test_critic():
 
 if __name__ == '__main__':
     # test_tqagent()
-    test_actor_critic()
+    # test_actor_critic()
+    test_random_sample()

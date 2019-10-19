@@ -122,7 +122,7 @@ def main():
 
                     # evaluation
                     if episode % args.eval_step == 0:
-                        eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=5, mean=False)
+                        eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=args.eval_seed, mean=False)
                         eval_rewards.append(eval_reward)
         else:
             replay_buffer = ReplayBuffer(args.max_step)
@@ -133,7 +133,6 @@ def main():
                 next_state, reward, done, info = env.step(action)
 
                 replay_buffer.add(state, action, next_state, reward, done) # バッファーに追加
-                # agent.train(state, action, next_state, reward, done)
                 state = next_state
 
                 if done:
@@ -148,7 +147,7 @@ def main():
 
                     # evaluation
                     if episode % args.eval_step == 0:
-                        eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=5, mean=False)
+                        eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=args.eval_seed, mean=False)
                         eval_rewards.append(eval_reward)
 
                 # experience replay
