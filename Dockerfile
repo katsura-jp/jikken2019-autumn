@@ -5,6 +5,7 @@ FROM nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04
 
 # 以下のコマンドをbashにする.
 SHELL ["/bin/bash", "-c"]
+RUN echo 'build jikken-autumn docker image'
 
 # aptの更新
 RUN apt-get upgrade -y
@@ -47,3 +48,6 @@ RUN source ~/.bashrc
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python3.6 get-pip.py && \
     rm get-pip.py
+
+RUN echo 'alias pip=pip3.6' >> ~/.bashrc
+RUN source ~/.bashrc
