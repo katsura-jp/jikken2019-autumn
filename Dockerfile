@@ -5,6 +5,7 @@ FROM nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04
 
 # 以下のコマンドをbashにする.
 SHELL ["/bin/bash", "-c"]
+RUN echo 'build jikken-autumn docker image'
 
 # aptの更新
 RUN apt-get upgrade -y
