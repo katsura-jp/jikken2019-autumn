@@ -50,7 +50,6 @@ def collate_buffer(buffer, batch_size):
     next_states = torch.stack(next_states, dim=0)
     rewards = torch.stack(rewards, dim=0)
     dones = torch.stack(dones, dim=0)
-    import pdb; pdb.set_trace()
 
     return states, actions, next_states, rewards, dones
 

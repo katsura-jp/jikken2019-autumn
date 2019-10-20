@@ -19,14 +19,11 @@ from utils import Logger
 from buffer import ReplayBuffer, collate_buffer
 
 def get_args():
-    parser = argparse.ArgumentParser(description='テーブルQ学習の設定')
+    parser = argparse.ArgumentParser(description='Actor-Criticの設定')
 
     parser.add_argument('--max-step', type=float, default=5e+5, help='(int) 最大ステップ数. default: 5e+5')
-    parser.add_argument('--state-size', type=int, default=10, help='(int) Qテーブルの状態空間の分割数. default: 10')
-    parser.add_argument('--action-size', type=int, default=9, help='(int) Qテーブルの行動空間の分割数. default: 9')
     parser.add_argument('--gamma', type=float, default=0.99, help='(float) 減衰率. default: 0.99')
     parser.add_argument('--lr', type=float, default=3e-4, help='(float) 学習率. default: 3e-4')
-    parser.add_argument('--eps', type=float, default=0.05, help='eps-greedyの確率. default: 0.05')
     parser.add_argument('--seeds', type=str, default='2', help='(str) 評価環境のseed値. e.g. --seed 2,3,4 . default: 2')
     parser.add_argument('--save-step', type=int, default=500, help='(int) モデルの保存タイミング')
     parser.add_argument('--expl', type=int, default=10000, help='(int) ランダム行動ステップ数')
@@ -55,14 +52,11 @@ def main():
     args = get_args()
     # -- ハイパーパラメータ --
     param = dict()
-    param['model'] = 'TQLAgent'
+    param['model'] = 'Actor-Critic'
     param['max_step'] = args.max_step
-    param['state_size'] = args.state_size
-    param['action_size'] = args.action_size
     param['gamma'] = args.gamma
     param['lr'] = args.lr
     param['batch_size'] = args.batch_size
-    param['eps'] = args.eps
     param['seeds'] = args.seeds
     param['eval_seed'] = args.eval_seed
     param['er'] = args.er
@@ -92,17 +86,27 @@ def main():
     state_dim = env.observation_space.shape[0]
 
     for seed in args.seeds:
+        # seedの設定
         env.seed(seed)
         torch.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cudnn.deterministic = True
+
+        # model
         actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
         critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
         if args.device != 'cpu':
             actor.to(args.device)
             critic.to(args.device)
+
+        # optim
         actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
         critic_optim = torch.optim.Adam(critic.parameters(), lr=args.lr)
+
+        # replay buffer
         replay_buffer = ReplayBuffer(args.max_step)
 
         # -- start training
@@ -111,7 +115,7 @@ def main():
         save_episodes = []
         eval_rewards = []
 
-        for t in tqdm(int(args.max_step)):
+        for t in tqdm(range(int(args.max_step))):
             if args.device == 'cpu':
                 action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].detach().numpy()
             else:
@@ -139,7 +143,7 @@ def main():
             if len(replay_buffer) > args.batch_size and t > args.expl:
                 train(actor, critic, actor_optim, critic_optim, replay_buffer, args)
 
-    pass
+
 
 def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
     actor.train()
