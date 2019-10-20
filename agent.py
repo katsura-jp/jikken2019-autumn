@@ -249,7 +249,7 @@ class ActorNet(nn.Module):
 
     def clamp(self, x):
         for i in range(x.shape[1]):
-            x[:,i] = x[:,i].clamp(self.action_space.low[i], self.action_space.high[i])
+            x[:,i].clamp_(self.action_space.low[i], self.action_space.high[i])
         return x
 
     def save_models(self, path):
@@ -292,8 +292,8 @@ class CriticNet(nn.Module):
 class ActorCriticTanh(nn.Module):
     def __init__(self, high, low):
         super(ActorCriticTanh, self).__init__()
-        self.high = torch.tensor(high)
-        self.low = torch.tensor(low)
+        self.high = torch.tensor(high).type(torch.float32)
+        self.low = torch.tensor(low).type(torch.float32)
         self.tanh = nn.Tanh()
 
     def forward(self, x):
@@ -315,7 +315,7 @@ def test_tqagent():
 
 
 def test_actor_critic():
-    import pdb; pdb.set_trace()
+
     gamma = 0.99
 
     env = gym.make('Pendulum-v0')
@@ -350,7 +350,7 @@ def test_actor_critic():
         reward = reward.view(-1, 1)
         # reward = reward.unsqueeze(dim=0)
 
-
+    import pdb; pdb.set_trace()
     x = torch.cat([next_state, actor(state)], dim=1)
     delta = reward + gamma * critic(x)
     x = torch.cat([state, action], dim=1)
@@ -407,5 +407,5 @@ def test_critic():
 
 if __name__ == '__main__':
     # test_tqagent()
-    # test_actor_critic()
-    test_random_sample()
+    test_actor_critic()
+    # test_random_sample()
