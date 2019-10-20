@@ -1,16 +1,6 @@
 # jikken2019-autumn
 主専攻実験（秋）　強化学習
 
-### ToDo
-
-- `done=True`の時にtrainメソッドでどう処理すればいいのかを確認
-
-
-
-## Agent
-### テーブルQ学習
-### Actor-Critic
-
 ## Env
 ### [Pendulum-v0](https://github.com/openai/gym/blob/master/gym/envs/classic_control/pendulum.py#L7)
 
@@ -35,8 +25,32 @@
 
     - 角速度 $\dot{\theta}$ : [-8, 8]
 
-      
 
-## Memo
-- 空間は`gym.spaces`の[Box](https://github.com/openai/gym/blob/master/gym/spaces/box.py)を使うといい
-  - `from gym.spaces import Box`
+## Docker
+```
+$ sudo docker build -t="<user>/jikken-autumn:latest" ./
+$ docker run -it --rm --gpus all --name reinforce_learning --shm-size 16G -v $PWD:/home/ <user>/jikken-autumn:latest /bin/bash
+
+# cd /home/
+# pip install -r requirements.txt
+```
+
+## 課題1
+```
+$ python table_q_learning.py --max-step 128000000 --save-step 128000 --eval-step 25600 --seeds 2
+```
+
+## 課題2
+```
+$ python table_q_learning.py --er --seeds 2
+```
+
+## 課題3
+```
+$ python 
+```
+
+## 課題4
+```
+$ python
+```
