@@ -18,21 +18,6 @@ from agent import ActorNet, CriticNet
 from utils import Logger
 from buffer import ReplayBuffer, collate_buffer
 
-class CriticLoss(nn.Module):
-    def __init__(self):
-        super(CriticLoss, self).__init__()
-        pass
-    def forward(self):
-        pass
-
-class ActorLoss(nn.Module):
-    def __init__(self):
-        super(ActorLoss, self).__init__()
-        pass
-    def forward(self):
-        pass
-
-
 def get_args():
     parser = argparse.ArgumentParser(description='テーブルQ学習の設定')
 
@@ -107,6 +92,10 @@ def main():
     state_dim = env.observation_space.shape[0]
 
     for seed in args.seeds:
+        env.seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
         actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
         critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
         if args.device != 'cpu':
@@ -143,7 +132,8 @@ def main():
 
                 # evaluation
                 if episode % args.eval_step == 0:
-                    evaluate(actor, env=gym.make('Pendulum-v0'),n_episode=10, seed=args.eval_seed, gamma=args.gamma, device=args.device)
+                    eval_reward = evaluate(actor, env=gym.make('Pendulum-v0'),n_episode=10, seed=args.eval_seed, gamma=args.gamma, device=args.device)
+                    eval_rewards.append(eval_reward)
                     actor.train()
 
             if len(replay_buffer) > args.batch_size and t > args.expl:

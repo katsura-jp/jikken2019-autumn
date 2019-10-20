@@ -4,6 +4,7 @@ import datetime
 import time
 import argparse
 import logging
+import pickle
 
 import numpy as np
 import torch
@@ -33,7 +34,7 @@ def get_args():
     parser.add_argument('--lr', type=float, default=3e-4, help='(float) 学習率. default: 3e-4')
     parser.add_argument('--eps', type=float, default=0.05, help='eps-greedyの確率. default: 0.05')
     parser.add_argument('--seeds', type=str, default='2', help='(str) 評価環境のseed値. e.g. --seed 2,3,4 . default: 2')
-    parser.add_argument('--save-step', type=int, default=500, help='(int) モデルの保存タイミング')
+    parser.add_argument('--save-step', type=int, default=500, help='(int) モデルの保存タイミング. default: 500')
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
@@ -157,6 +158,8 @@ def main():
 
         # visualize
         plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{seed}.png'))
+        with open(os.path.join(save_dir, f'history_{seed}.pickle'), 'wb') as f:
+            pickle.dump(eval_rewards, f)
 
     env.close()
     # -- 評価 --
@@ -208,8 +211,6 @@ def hist(y, path):
     plt.hist(x, weights=y, bins=len(x), rwidth=0.8)
     plt.savefig(path)
     plt.clf()
-
-    print(y.argsort()[:10])
 
 
 if __name__ == '__main__':
