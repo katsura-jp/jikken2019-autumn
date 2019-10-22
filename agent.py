@@ -239,7 +239,7 @@ class ActorNet(nn.Module):
         x = self.fc2(x)
         x = self.tanh(x)
         if self.training:
-            x = x + self._get_noise(x.shape[0])
+            x = x + self._get_noise(x.shape[0]).to(x.device)
         x = self.clamp(x)
         return x
 
@@ -297,7 +297,9 @@ class ActorCriticTanh(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, x):
-        x = (self.high + self.low) / 2 + ((self.high - self.low) / 2) * self.tanh(x)
+        high = self.high.to(x.device)
+        low = self.low.to(x.device)
+        x = (high + low) / 2 + ((high - low) / 2) * self.tanh(x)
         return x
 
 
