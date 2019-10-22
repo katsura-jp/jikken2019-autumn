@@ -99,8 +99,8 @@ def main():
         actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
         critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
         if args.device != 'cpu':
-            actor.to(args.device)
-            critic.to(args.device)
+            actor = actor.to(args.device)
+            critic = critic.to(args.device)
 
         # optim
         actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
