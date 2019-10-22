@@ -297,6 +297,7 @@ class ActorCriticTanh(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, x):
+        # TODO: GPU対応
         x = (self.high + self.low) / 2 + ((self.high - self.low) / 2) * self.tanh(x)
         return x
 
