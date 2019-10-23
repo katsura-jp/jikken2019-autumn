@@ -9,3 +9,4 @@ tqdm == 4.36.1
 seaborn == 0.9.0
 roboschool == 1.0.48
 box2d-py == 2.3.8
+tensorboardX == 1.9

@@ -6,8 +6,7 @@ import argparse
 import logging
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import tensorboardX as tbx
 import numpy as np
 import gym
 
@@ -31,6 +30,7 @@ def get_args():
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
+    parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--er', action='store_true', help='経験再生.')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
@@ -59,6 +59,7 @@ def main():
     param['batch_size'] = args.batch_size
     param['seeds'] = args.seeds
     param['eval_seed'] = args.eval_seed
+    param['eval_episodes'] = args.eval_episodes
     param['er'] = args.er
     param['expl'] = args.expl
 
@@ -82,6 +83,8 @@ def main():
         logger.log(f'    {k}: {v}')
     logger.log('}')
 
+    writer = tbx.SummaryWriter(save_dir)
+
     action_dim = env.action_space.shape[0]
     state_dim = env.observation_space.shape[0]
 
@@ -99,8 +102,8 @@ def main():
         actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
         critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
         if args.device != 'cpu':
-            actor.to(args.device)
-            critic.to(args.device)
+            actor = actor.to(args.device)
+            critic = critic.to(args.device)
 
         # optim
         actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
@@ -114,8 +117,10 @@ def main():
         episode = 1
         save_episodes = []
         eval_rewards = []
+        eval_reward_ = -10000.00
 
-        for t in tqdm(range(int(args.max_step))):
+        logger.log('   Step   | Episode | L(actor) | L(critic) | reward ')
+        for t in range(int(args.max_step)):
             if args.device == 'cpu':
                 action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].detach().numpy()
             else:
@@ -136,13 +141,23 @@ def main():
 
                 # evaluation
                 if episode % args.eval_step == 0:
-                    eval_reward = evaluate(actor, env=gym.make('Pendulum-v0'),n_episode=10, seed=args.eval_seed, gamma=args.gamma, device=args.device)
+                    eval_reward = evaluate(actor, env=gym.make('Pendulum-v0'),n_episode=args.eval_episodes, seed=args.eval_seed, gamma=args.gamma, device=args.device)
                     eval_rewards.append(eval_reward)
                     actor.train()
+                    writer.add_scalar("reward", eval_reward.mean(), episode)
+                    if actor_loss is not None:
+                        print('\r\n', end='')
+                        logger.log(f'{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward.mean():.3f}')
+                    eval_reward_ = eval_reward.mean()
+
 
             if len(replay_buffer) > args.batch_size and t > args.expl:
-                train(actor, critic, actor_optim, critic_optim, replay_buffer, args)
-
+                critic_loss, actor_loss = train(actor, critic, actor_optim, critic_optim, replay_buffer, args)
+                writer.add_scalar("loss/critic_loss", critic_loss, t)
+                writer.add_scalar("loss/actor_loss", actor_loss, t)
+                if t % 200 == 0:
+                    print('\r', end='')
+                    print(f'\r{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward_:.3f}', end='')
 
 
 def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
@@ -156,6 +171,7 @@ def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
         next_states = next_states.to(args.device)
         rewards = rewards.to(args.device)
         # dones = dones.to(args.devuce)
+
     # critic trainings
     x = torch.cat([next_states, actor(states)], dim=1).to(args.device)
     delta = rewards + args.gamma * critic(x)
@@ -167,10 +183,12 @@ def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
 
     # actor training
     x = torch.cat([states, actor(states)], dim=1)
-    actor_loss = critic(x).mean()
+    actor_loss = - critic(x).mean() # SGDとプラマイ逆
     actor_optim.zero_grad()
     actor_loss.backward()
     actor_optim.step()
+
+    return critic_loss.item(), actor_loss.item()
 
 
 def evaluate(actor, env, n_episode, seed, gamma, device):
@@ -183,9 +201,9 @@ def evaluate(actor, env, n_episode, seed, gamma, device):
             reward_sum = 0.  # 累積報酬
             while True:
                 if device == 'cpu':
-                    action = actor(torch.tensor(state, dtype=torch.float32).to(device))[0].detach().numpy()
+                    action = actor(torch.tensor([state], dtype=torch.float32).to(device))[0].detach().numpy()
                 else:
-                    action = actor(torch.tensor(state, dtype=torch.float32).to(device))[0].cpu().detach().numpy()
+                    action = actor(torch.tensor([state], dtype=torch.float32).to(device))[0].cpu().detach().numpy()
 
                 next_state, reward, done, info = env.step(action)
                 reward_sum += gamma * reward
