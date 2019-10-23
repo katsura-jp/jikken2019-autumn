@@ -109,6 +109,11 @@ def main():
         actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
         critic_optim = torch.optim.Adam(critic.parameters(), lr=args.lr)
 
+        # actor_optim = torch.optim.SGD(actor.parameters(), lr=args.lr)
+        # critic_optim = torch.optim.SGD(critic.parameters(), lr=args.lr)
+
+        # actor_optim = torch.optim.SGD(actor.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6)
+        # critic_optim = torch.optim.SGD(critic.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6)
         # replay buffer
         replay_buffer = ReplayBuffer(args.max_step)
 
@@ -120,11 +125,13 @@ def main():
         eval_reward_ = -10000.00
 
         logger.log('   Step   | Episode | L(actor) | L(critic) | reward ')
+
+
         for t in range(int(args.max_step)):
             if args.device == 'cpu':
-                action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].detach().numpy()
+                action = actor(torch.tensor([state], dtype=torch.float32).to(args.device))[0].detach().numpy()
             else:
-                action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
+                action = actor(torch.tensor([state], dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
 
             # action = actions[0].detach().numpy()
             next_state, reward, done, info = env.step(action)
@@ -146,8 +153,8 @@ def main():
                     actor.train()
                     writer.add_scalar("reward", eval_reward.mean(), episode)
                     if actor_loss is not None:
-                        print('\r\n', end='')
-                        logger.log(f'{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward.mean():.3f}')
+                        print('\r', end='')
+                        logger.log(f'{t:8}  | {episode:7} | {actor_loss:.7} |  {critic_loss:.7} | {eval_reward.mean():.3f}')
                     eval_reward_ = eval_reward.mean()
 
 
@@ -157,7 +164,7 @@ def main():
                 writer.add_scalar("loss/actor_loss", actor_loss, t)
                 if t % 200 == 0:
                     print('\r', end='')
-                    print(f'\r{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward_:.3f}', end='')
+                    print(f'\r{t:8}  | {episode:7} | {actor_loss:.7} |  {critic_loss:.7} | {eval_reward_:.3f}', end='')
 
 
 def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
@@ -176,7 +183,7 @@ def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
     x = torch.cat([next_states, actor(states)], dim=1).to(args.device)
     delta = rewards + args.gamma * critic(x)
     x = torch.cat([states, actions], dim=1).to(args.device)
-    critic_loss = torch.pow(delta - critic(x), 2).mean()
+    critic_loss = torch.pow(delta - critic(x), 2).mean() # MSE
     critic_optim.zero_grad()
     critic_loss.backward()
     critic_optim.step()

@@ -21,7 +21,8 @@ class Logger(object):
         self.logger = logging.getLogger("Log")
         self.level = logging.DEBUG
         self.logger.setLevel(self.level)
-        self.handler_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        self.handler_format = logging.Formatter('')
+        # self.handler_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
         self.stream_handler = logging.StreamHandler()
         self.stream_handler.setLevel(self.level)
