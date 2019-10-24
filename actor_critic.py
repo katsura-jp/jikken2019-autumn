@@ -9,6 +9,7 @@ import torch
 import tensorboardX as tbx
 import numpy as np
 import gym
+import pickle
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -27,6 +28,9 @@ def get_args():
     parser.add_argument('--save-step', type=int, default=500, help='(int) モデルの保存タイミング')
     parser.add_argument('--expl', type=int, default=10000, help='(int) ランダム行動ステップ数')
     parser.add_argument('--device', type=int, default=-1, help='(int) デバイス. -1はcpu, 0以上はGPUの番号. default: -1')
+
+    parser.add_argument('--optim', type=str, default='adam', choices=['adam', 'sgd', 'momentum_sgd'],
+                        help='(str) 最適化関数. adam, sgd, momentum_sgdから選択. default: adam')
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
@@ -62,7 +66,7 @@ def main():
     param['eval_episodes'] = args.eval_episodes
     param['er'] = args.er
     param['expl'] = args.expl
-
+    param['optim'] = args.optim
 
     # -- 環境のインスタンス生成 --
     env = gym.make('Pendulum-v0')
@@ -106,9 +110,18 @@ def main():
             critic = critic.to(args.device)
 
         # optim
-        actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
-        critic_optim = torch.optim.Adam(critic.parameters(), lr=args.lr)
-
+        if args.optim == 'adam':
+            actor_optim = torch.optim.Adam(actor.parameters(), lr=args.lr)
+            critic_optim = torch.optim.Adam(critic.parameters(), lr=args.lr)
+        elif args.optim == 'sgd':
+            actor_optim = torch.optim.SGD(actor.parameters(), lr=args.lr)
+            critic_optim = torch.optim.SGD(critic.parameters(), lr=args.lr)
+        elif args.optim == 'momentum_sgd':
+            actor_optim = torch.optim.SGD(actor.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6)
+            critic_optim = torch.optim.SGD(critic.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6)
+        else:
+            raise NotImplementedError
+        
         # replay buffer
         replay_buffer = ReplayBuffer(args.max_step)
 
@@ -120,11 +133,13 @@ def main():
         eval_reward_ = -10000.00
 
         logger.log('   Step   | Episode | L(actor) | L(critic) | reward ')
+
+
         for t in range(int(args.max_step)):
             if args.device == 'cpu':
-                action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].detach().numpy()
+                action = actor(torch.tensor([state], dtype=torch.float32).to(args.device))[0].detach().numpy()
             else:
-                action = actor(torch.tensor(state, dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
+                action = actor(torch.tensor([state], dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
 
             # action = actions[0].detach().numpy()
             next_state, reward, done, info = env.step(action)
@@ -146,8 +161,8 @@ def main():
                     actor.train()
                     writer.add_scalar("reward", eval_reward.mean(), episode)
                     if actor_loss is not None:
-                        print('\r\n', end='')
-                        logger.log(f'{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward.mean():.3f}')
+                        print('\r', end='')
+                        logger.log(f'{t:8}  | {episode:7} | {actor_loss:.7} |  {critic_loss:.7} | {eval_reward.mean():.3f}')
                     eval_reward_ = eval_reward.mean()
 
 
@@ -157,8 +172,13 @@ def main():
                 writer.add_scalar("loss/actor_loss", actor_loss, t)
                 if t % 200 == 0:
                     print('\r', end='')
-                    print(f'\r{t:8}  | {episode:7} | {actor_loss:.7} | {critic_loss:.7} | {eval_reward_:.3f}', end='')
+                    print(f'\r{t:8}  | {episode:7} | {actor_loss:.7} |  {critic_loss:.7} | {eval_reward_:.3f}', end='')
+        
+        plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{seed}.png'))
+        with open(os.path.join(save_dir, f'history_{seed}.pickle'), 'wb') as f:
+            pickle.dump(eval_rewards, f)
 
+    env.close()
 
 def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
     actor.train()
@@ -176,7 +196,7 @@ def train(actor, critic, actor_optim, critic_optim, replay_buffer, args):
     x = torch.cat([next_states, actor(states)], dim=1).to(args.device)
     delta = rewards + args.gamma * critic(x)
     x = torch.cat([states, actions], dim=1).to(args.device)
-    critic_loss = torch.pow(delta - critic(x), 2).mean()
+    critic_loss = torch.pow(delta - critic(x), 2).mean() # MSE
     critic_optim.zero_grad()
     critic_loss.backward()
     critic_optim.step()
@@ -215,7 +235,27 @@ def evaluate(actor, env, n_episode, seed, gamma, device):
     rewards = np.array(rewards)
     return rewards
 
+def boxplot(rewards, labels, path):
+    plt.boxplot(rewards, labels=labels, showfliers=False)
+    plt.title('reward history')
+    plt.xlabel('episode')
+    plt.ylabel('reward')
+    plt.savefig(path)
+    plt.clf()
 
+def plot(rewards, step, path):
+    rewards = np.array(rewards)
+    x = (np.arange(rewards.shape[0]) + 1) * step
+    y = np.percentile(rewards, [0, 25, 50, 75, 100], axis=1)
+    plt.plot(x, y[0], color='black') # min
+    plt.plot(x, y[4], color='black') # max
+    plt.fill_between(x, y[1], y[3], color='gray', alpha=0.5) # 25%, 75%
+    plt.plot(x, y[2], color='red') # mean
+    plt.title('reward history')
+    plt.xlabel('episode')
+    plt.ylabel('reward')
+    plt.savefig(path)
+    plt.clf()
 
 if __name__ == '__main__':
     main()

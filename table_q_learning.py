@@ -201,6 +201,7 @@ def plot(rewards, step, path):
     plt.savefig(path)
     plt.clf()
 
+
 def heatmap(x, path):
     sns.heatmap(x)
     plt.savefig(path)
