@@ -28,6 +28,7 @@ def get_args():
 
     parser.add_argument('--optim', type=str, default='adam', choices=['adam', 'sgd', 'momentum_sgd'],
                         help='(str) 最適化関数. adam, sgd, momentum_sgdから選択. default: adam')
+    parser.add_argument('--sigma-beta', type=float, default=0.1, help='(float) ⾏動⽅策のノイズ. default: 0.1')
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
@@ -59,6 +60,7 @@ def main():
     param['er'] = args.er
     param['expl'] = args.expl
     param['optim'] = args.optim
+    param['sigma_beta'] = args.sigma_beta
 
 
     # -- 環境のインスタンス生成 --
@@ -83,7 +85,7 @@ def main():
     writer = tbx.SummaryWriter(save_dir)
 
     agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
-                  optim=args.optim, lr=args.lr, gamma=args.gamma, device=args.device)
+                  optim=args.optim, lr=args.lr, gamma=args.gamma, device=args.device, sigma=args.sigma_beta)
 
     # for seed in args.seeds:
     # seedの設定
@@ -150,6 +152,15 @@ def main():
     plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{args.seed}.png'))
     with open(os.path.join(save_dir, f'history_{args.seed}.pickle'), 'wb') as f:
         pickle.dump(eval_rewards, f)
+
+    rewards = []
+    for episode in save_episodes:
+        agent.load_models(os.path.join(save_dir, f'actor_critic_{episode}.pth'))
+        reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes, seed=args.eval_seed)
+        rewards.append(reward)
+
+    # visualize
+    boxplot(rewards, save_episodes, os.path.join(save_dir, f'boxplot_{seed}.png'))
 
     env.close()
 

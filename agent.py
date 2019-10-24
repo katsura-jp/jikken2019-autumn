@@ -207,7 +207,7 @@ class TQLAgent(Agent):
 
 class ActorNet(nn.Module):
     '''actionを返すモデル'''
-    def __init__(self, action_space, inplaces, places, hidden_dim=256, omega=0.1):
+    def __init__(self, action_space, inplaces, places, hidden_dim=256, sigma=0.1):
         '''
         :param action_space: 行動部分空間
         :param inplaces: 入力の次元数(stateの次元)
@@ -218,11 +218,11 @@ class ActorNet(nn.Module):
 
         self.action_space = action_space
         self.hidden_dim = hidden_dim
-        self.omega = omega
+        self.sigma = sigma
 
         # ノイズ
         # d = torch.diag(torch.tensor(self.action_space.high - self.action_space.low) * omega / 2).type(torch.float32)
-        d = (torch.tensor(self.action_space.high - self.action_space.low) * omega / 2).type(torch.float32)
+        d = (torch.tensor(self.action_space.high - self.action_space.low) * sigma / 2).type(torch.float32)
         self.norm = normal.Normal(torch.zeros(d.shape), d)
 
         # NN(Actorは2層)
@@ -237,10 +237,6 @@ class ActorNet(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
         x = self.tanh(x)
-        if self.training:
-            x = x + self._get_noise(x.shape[0]).to(x.device)
-
-        x = self.clamp(x)
         return x
 
     def _get_noise(self, bs):
@@ -304,7 +300,128 @@ class ActorCriticTanh(nn.Module):
 
 
 class ActorCriticAgent(Agent):
-    def __init__(self, action_space, observation_space, optim, lr, gamma, device):
+    def __init__(self, action_space, observation_space, optim, lr, gamma, device='cpu', sigma=0.1):
+        self.action_space = action_space
+        self.observation_space = observation_space
+
+        action_dim = action_space.shape[0]
+        state_dim = observation_space.shape[0]
+
+        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256, sigma=sigma).to(device)
+        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+
+        if optim == 'adam':
+            self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=lr)
+            self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=lr)
+        elif optim == 'sgd':
+            self.actor_optim = torch.optim.SGD(self.actor.parameters(), lr=lr)
+            self.critic_optim = torch.optim.SGD(self.critic.parameters(), lr=lr)
+        elif optim == 'momentum_sgd':
+            self.actor_optim = torch.optim.SGD(self.actor.parameters(), lr=lr, momentum=0.9, weight_decay=1e-6)
+            self.critic_optim = torch.optim.SGD(self.critic.parameters(), lr=lr, momentum=0.9, weight_decay=1e-6)
+        else:
+            raise NotImplementedError
+
+        self.device = device
+        self.lr = lr
+        self.gamma = gamma
+
+
+        self.critic_loss = None
+        self.actor_loss = None
+
+        # ノイズの生成
+        d = (torch.tensor(self.action_space.high - self.action_space.low) * sigma / 2).type(torch.float32)
+        self.norm = normal.Normal(torch.zeros(d.shape), d)
+
+    def _clamp(self, x):
+        for i in range(x.shape[1]):
+            x[:,i].clamp_(self.action_space.low[i], self.action_space.high[i])
+        return x
+
+    def _get_noise(self, bs):
+        noise = self.norm.sample(sample_shape=torch.Size([bs]))
+        return noise
+
+    def save_models(self, path):
+        torch.save({'actor': self.actor.state_dict(),
+                    'critic': self.critic.state_dict()}, path)
+
+    def load_models(self, path):
+        weights = torch.load(path)
+        self.actor.load_state_dict(weights['actor'])
+        self.critic.load_state_dict(weights['critic'])
+
+    def select_action(self, state):
+        x = self.actor(state)
+        return x
+
+    def select_exploratory_action(self, state):
+        x = self.actor(state)
+        x = x + self._get_noise(x.shape[0]).to(x.device)
+        x = self._clamp(x)
+        return x
+
+    def train(self, state, action, next_state, reward, done):
+        self.actor.train()
+        self.critic.train()
+
+        state = state.to(self.device)
+        action = action.to(self.device)
+        next_state = next_state.to(self.device)
+        reward = reward.to(self.device)
+
+        # critic trainings
+        x = torch.cat([next_state, self.select_exploratory_action(state)], dim=1).to(self.device)
+        delta = reward + self.gamma * self.critic(x)
+        x = torch.cat([state, action], dim=1).to(self.device)
+        critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
+        self.critic_optim.zero_grad()
+        critic_loss.backward()
+        self.critic_optim.step()
+
+        # actor training
+        x = torch.cat([state, self.select_exploratory_action(state)], dim=1)
+        actor_loss = - self.critic(x).mean()  # SGDとプラマイ逆
+        self.actor_optim.zero_grad()
+        actor_loss.backward()
+        self.actor_optim.step()
+
+
+        self.critic_loss = critic_loss.item()
+        self.actor_loss = actor_loss.item()
+
+    def eval(self, env, n_episode, seed):
+        rewards = []  # 各エピソードの累積報酬を格納する
+        env.seed(seed)
+        self.actor.eval()
+        with torch.no_grad():
+            for e in range(n_episode):
+                state = env.reset()
+                reward_sum = 0.  # 累積報酬
+                while True:
+                    if self.device == 'cpu':
+                        action = self.select_action(torch.tensor([state], dtype=torch.float32).to(self.device))[0].detach().numpy()
+                    else:
+                        action = self.select_action(torch.tensor([state], dtype=torch.float32).to(self.device))[0].cpu().detach().numpy()
+
+                    next_state, reward, done, info = env.step(action)
+                    reward_sum += self.gamma * reward
+                    state = next_state
+                    if done:
+                        break
+                rewards.append(reward_sum)
+        env.close()
+        rewards = np.array(rewards)
+        return rewards
+
+
+class TD3Agent(Agent):
+    def __init__(self, action_space, observation_space, optim, lr, gamma,
+                 target_ac=True, smooth_reg=True, delay_update=True, clip_double=True,
+                 kai=0.005, clip=0.5, delay=2, sigma=0.2,
+                 device='cpu'):
+
         self.action_space = action_space
         self.observation_space = observation_space
 
@@ -326,9 +443,18 @@ class ActorCriticAgent(Agent):
         else:
             raise NotImplementedError
 
+        self.target_ac = target_ac
+        self.smooth_reg = smooth_reg
+        self.delay_update=  delay_update
+        self.clip_double = clip_double
+
         self.device = device
         self.lr = lr
         self.gamma = gamma
+        self.kai = kai
+        self.clip = clip
+        self.delay = delay
+        self.sigma = sigma
 
 
         self.critic_loss = None
