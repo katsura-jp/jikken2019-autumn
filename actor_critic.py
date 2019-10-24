@@ -146,7 +146,8 @@ def main():
                 print('\r', end='')
                 print(f'\r{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward_:.3f}', end='')
 
-
+    env.close()
+    
     plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{args.seed}.png'))
     with open(os.path.join(save_dir, f'history_{args.seed}.pickle'), 'wb') as f:
         pickle.dump(eval_rewards, f)
@@ -158,9 +159,9 @@ def main():
         rewards.append(reward)
 
     # visualize
-    boxplot(rewards, save_episodes, os.path.join(save_dir, f'boxplot_{seed}.png'))
+    boxplot(rewards, save_episodes, os.path.join(save_dir, f'boxplot_{args.seed}.png'))
 
-    env.close()
+    
 
 def boxplot(rewards, labels, path):
     plt.boxplot(rewards, labels=labels, showfliers=False)
