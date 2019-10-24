@@ -314,7 +314,6 @@ class ActorCriticAgent(Agent):
 
     def select_action(self, state):
         x = self.actor(state)
-        x = self._clamp(x)
         return x
 
     def select_exploratory_action(self, state):
