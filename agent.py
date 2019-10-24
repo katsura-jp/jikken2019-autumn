@@ -206,63 +206,30 @@ class TQLAgent(Agent):
 # Actor-Critic
 
 class ActorNet(nn.Module):
-    '''actionを返すモデル'''
-    def __init__(self, action_space, inplaces, places, hidden_dim=256, sigma=0.1):
-        '''
-        :param action_space: 行動部分空間
-        :param inplaces: 入力の次元数(stateの次元)
-        :param places: 出力の次元(actionの次元)
-        :param hidden_dim: 隠れ層の次元数
-        '''
+    def __init__(self, action_space, inplaces, places, hidden_dim=256):
         super(ActorNet, self).__init__()
 
         self.action_space = action_space
         self.hidden_dim = hidden_dim
-        self.sigma = sigma
-
-        # ノイズ
-        # d = torch.diag(torch.tensor(self.action_space.high - self.action_space.low) * omega / 2).type(torch.float32)
-        d = (torch.tensor(self.action_space.high - self.action_space.low) * sigma / 2).type(torch.float32)
-        self.norm = normal.Normal(torch.zeros(d.shape), d)
 
         # NN(Actorは2層)
         self.fc1 = nn.Linear(inplaces, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, places)
         self.relu = nn.ReLU(inplace=True)
-        self.tanh = ActorCriticTanh(self.action_space.high, self.action_space.low)
+        self.activation = ActorCriticTanh(self.action_space.high, self.action_space.low)
 
 
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
-        x = self.tanh(x)
+        x = self.activation(x)
         return x
 
-    def _get_noise(self, bs):
-        noise = self.norm.sample(sample_shape=torch.Size([bs]))
-        return noise
-
-    def clamp(self, x):
-        for i in range(x.shape[1]):
-            x[:,i].clamp_(self.action_space.low[i], self.action_space.high[i])
-        return x
-
-    def save_models(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load_models(self, path):
-        self.load_state_dict(torch.load(path))
 
 
 class CriticNet(nn.Module):
-    '''Q値を返すモデル'''
     def __init__(self, inplaces, places, hidden_dim=256):
-        '''
-        :param inplaces: 入力の次元数(stateの次元 + actionの次元)
-        :param places: 出力の次元(1次元)
-        :param hidden_dim: 隠れ層の次元数
-        '''
         super(CriticNet, self).__init__()
 
         # NN(Actorは2層)
@@ -275,14 +242,7 @@ class CriticNet(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
         x = self.fc3(x)
-
         return x
-
-    def save_models(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load_models(self, path):
-        self.load_state_dict(torch.load(path))
 
 
 class ActorCriticTanh(nn.Module):
@@ -307,7 +267,7 @@ class ActorCriticAgent(Agent):
         action_dim = action_space.shape[0]
         state_dim = observation_space.shape[0]
 
-        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256, sigma=sigma).to(device)
+        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
         self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
 
         if optim == 'adam':
@@ -354,10 +314,11 @@ class ActorCriticAgent(Agent):
 
     def select_action(self, state):
         x = self.actor(state)
+        x = self._clamp(x)
         return x
 
     def select_exploratory_action(self, state):
-        x = self.actor(state)
+        x = self.select_action(state)
         x = x + self._get_noise(x.shape[0]).to(x.device)
         x = self._clamp(x)
         return x
