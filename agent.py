@@ -303,111 +303,132 @@ class ActorCriticTanh(nn.Module):
         return x
 
 
+class ActorCriticAgent(Agent):
+    def __init__(self, action_space, observation_space, optim, lr, gamma, device):
+        self.action_space = action_space
+        self.observation_space = observation_space
+
+        action_dim = action_space.shape[0]
+        state_dim = observation_space.shape[0]
+
+        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
+        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+
+        if optim == 'adam':
+            self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=lr)
+            self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=lr)
+        elif optim == 'sgd':
+            self.actor_optim = torch.optim.SGD(self.actor.parameters(), lr=lr)
+            self.critic_optim = torch.optim.SGD(self.critic.parameters(), lr=lr)
+        elif optim == 'momentum_sgd':
+            self.actor_optim = torch.optim.SGD(self.actor.parameters(), lr=lr, momentum=0.9, weight_decay=1e-6)
+            self.critic_optim = torch.optim.SGD(self.critic.parameters(), lr=lr, momentum=0.9, weight_decay=1e-6)
+        else:
+            raise NotImplementedError
+
+        self.device = device
+        self.lr = lr
+        self.gamma = gamma
+
+
+        self.critic_loss = None
+        self.actor_loss = None
+
+
+    def save_models(self, path):
+        torch.save({'actor': self.actor.state_dict(),
+                    'critic': self.critic.state_dict()}, path)
+
+    def load_models(self, path):
+        weights = torch.load(path)
+        self.actor.load_state_dict(weights['actor'])
+        self.critic.load_state_dict(weights['critic'])
+
+    def select_action(self, state):
+        self.actor.eval()
+        return self.actor(state)
+
+    def select_exploratory_action(self, state):
+        self.actor.train()
+        return self.actor(state)
+
+    def train(self, state, action, next_state, reward, done):
+        self.actor.train()
+        self.critic.train()
+
+        if self.device != 'cpu':
+            state = state.to(self.device)
+            action = action.to(self.device)
+            next_state = next_state.to(self.device)
+            reward = reward.to(self.device)
+
+        # critic trainings
+        x = torch.cat([next_state, self.actor(state)], dim=1).to(self.device)
+        delta = reward + self.gamma * self.critic(x)
+        x = torch.cat([state, action], dim=1).to(self.device)
+        critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
+        self.critic_optim.zero_grad()
+        critic_loss.backward()
+        self.critic_optim.step()
+
+        # actor training
+        x = torch.cat([state, self.actor(state)], dim=1)
+        actor_loss = - self.critic(x).mean()  # SGDとプラマイ逆
+        self.actor_optim.zero_grad()
+        actor_loss.backward()
+        self.actor_optim.step()
+
+
+        self.critic_loss = critic_loss.item()
+        self.actor_loss = actor_loss.item()
+
+    def eval(self, env, n_episode, seed):
+        rewards = []  # 各エピソードの累積報酬を格納する
+        env.seed(seed)
+        self.actor.eval()
+        with torch.no_grad():
+            for e in range(n_episode):
+                state = env.reset()
+                reward_sum = 0.  # 累積報酬
+                while True:
+                    if self.device == 'cpu':
+                        action = self.actor(torch.tensor([state], dtype=torch.float32).to(self.device))[0].detach().numpy()
+                    else:
+                        action = self.actor(torch.tensor([state], dtype=torch.float32).to(self.device))[0].cpu().detach().numpy()
+
+                    next_state, reward, done, info = env.step(action)
+                    reward_sum += self.gamma * reward
+                    state = next_state
+                    if done:
+                        break
+                rewards.append(reward_sum)
+        env.close()
+        rewards = np.array(rewards)
+        return rewards
+
 # --- test codes ---
 
-def test_tqagent():
-    env = gym.make('Pendulum-v0')
-    agent = TQLAgent(action_space=env.action_space, observation_space=env.observation_space,state_size=10, action_size=9,
-                 lr=3e-4, gamma=0.99, eps=0.05)
-    print(agent.q_table.shape)
-    print(agent._state_index(env.observation_space.low))
-    print(agent._state_index(env.observation_space.high))
-    print(agent._action_index(env.action_space.low))
-    print(agent._action_index(env.action_space.high))
-
-
-def test_actor_critic():
-
-    gamma = 0.99
+def test_agent():
+    import datetime
+    import os
 
     env = gym.make('Pendulum-v0')
-    action_dim = env.action_space.shape[0]
-    state_dim = env.observation_space.shape[0]
+    agent = ActorCriticAgent(action_space=env.action_space, observation_space=env.observation_space,
+                  optim='adam', lr=3e-4, gamma=0.99, device='cpu')
+    now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    save_dir = os.path.join('./log/test_agent', now)
+    os.makedirs(save_dir, exist_ok=True)
 
-    actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
-    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=1e-4)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=1e-4)
-
-    state = env.reset()
-    action = env.action_space.sample()
-    next_state, reward, done, info = env.step(action)
-
-    # sample
-    state = torch.tensor(state).type(torch.float32)
-    state = torch.stack([state, state], dim=0)
-    if state.ndim == 1:
-        state = state.unsqueeze(dim=0)
-    action = torch.tensor(action).type(torch.float32)
-    action = torch.stack([action, action], dim=0)
-    if action.ndim == 1:
-        action = action.unsqueeze(dim=0)
-    next_state = torch.tensor(next_state).type(torch.float32)
-    next_state = torch.stack([next_state, next_state], dim=0)
-    if next_state.ndim == 1:
-        next_state = next_state.unsqueeze(dim=0)
-    reward = torch.tensor(reward).type(torch.float32)
-    reward = torch.stack([reward, reward], dim=0)
-    if reward.ndim < 2:
-        reward = reward.view(-1, 1)
-        # reward = reward.unsqueeze(dim=0)
-
-    import pdb; pdb.set_trace()
-    x = torch.cat([next_state, actor(state)], dim=1)
-    delta = reward + gamma * critic(x)
-    x = torch.cat([state, action], dim=1)
-    critic_loss = torch.pow(delta - critic(x), 2).mean()
-    critic_optim.zero_grad()
-    critic_loss.backward()
-    critic_optim.step()
-
-    x = torch.cat([state, actor(state)], dim=1)
-    actor_loss = critic(x).mean()
-    actor_optim.zero_grad()
-    actor_loss.backward()
-    actor_optim.step()
-
-def test_random_sample():
-    from buffer import ReplayBuffer, collate_buffer
-    device = 'cpu'
-    gamma = 0.99
-    batch_size = 64
-    env = gym.make('Pendulum-v0')
-    action_dim = env.action_space.shape[0]
-    state_dim = env.observation_space.shape[0]
-
-    actor = ActorNet(action_space=env.action_space, inplaces=state_dim, places=action_dim, hidden_dim=256)
-    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=1e-4)
-    critic_optim = torch.optim.Adam(critic.parameters(), lr=1e-4)
-    buffer = ReplayBuffer(1000)
-    state = env.reset()
-    # import pdb; pdb.set_trace()
-    for i in range(100):
-        actions = actor(torch.tensor(state, dtype=torch.float32).to(device))
-        action = actions[0].detach().numpy()
-        next_state, reward, done, info = env.step(action)
-        buffer.add(state, action, next_state, reward, done)
-    import pdb; pdb.set_trace()
-    states, actions, next_states, rewards, dones = collate_buffer(buffer, batch_size)
+    path = os.path.join(save_dir, f'actor_critic.pth')
+    agent.save_models(path)
+    print('save model')
+    agent.load_models(path)
+    print('load model')
 
 
-def test_critic():
-    env = gym.make('Pendulum-v0')
-    action_dim = env.action_space.shape[0]
-    state_dim = env.observation_space.shape[0]
-    critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256)
-    state = env.reset()
-    action = env.action_space.sample()
-    next_state, reward, done, info = env.step(action)
 
-    state = torch.tensor(state)
-    action = torch.tensor(action)
-    x = torch.cat([])
-    critic()
 
 
 if __name__ == '__main__':
-    # test_tqagent()
-    test_actor_critic()
-    # test_random_sample()
+    test_agent()
+    pass
