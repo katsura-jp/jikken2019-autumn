@@ -33,7 +33,6 @@ def get_args():
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
-    parser.add_argument('--er', action='store_true', help='経験再生.')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
     args = parser.parse_args()
@@ -57,7 +56,6 @@ def main():
     param['seed'] = args.seed
     param['eval_seed'] = args.eval_seed
     param['eval_episodes'] = args.eval_episodes
-    param['er'] = args.er
     param['expl'] = args.expl
     param['optim'] = args.optim
     param['sigma_beta'] = args.sigma_beta
