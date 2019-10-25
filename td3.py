@@ -11,9 +11,10 @@ import pickle
 
 import matplotlib.pyplot as plt
 
-from agent import ActorCriticAgent as Agent
+from agent import TD3Agent as Agent
 from utils import Logger
 from buffer import ReplayBuffer, collate_buffer
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='Actor-Criticの設定')
@@ -35,6 +36,17 @@ def get_args():
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
+
+    parser.add_argument('--target-ac', action='store_true', help='Target Actor & Target Criticの解除.')
+    parser.add_argument('--smooth-reg', action='store_true', help='Target Policy Smoothing Regularizationの解除.')
+    parser.add_argument('--delay-update', action='store_true', help='Delayed Policy Updateの解除.')
+    parser.add_argument('--clip-double', action='store_true', help='Clipped Double Q-Learningの解除.')
+
+    parser.add_argument('--tau', type=float, default=0.005, help='(float) ターゲットエージェントの更新割合. default: 0.005')
+    parser.add_argument('--clip', type=float, default=0.5, help='(float) Target Policy Smoothing Regularizationのノイズの最大値. default: 0.5')
+    parser.add_argument('--delay', type=int, default=2, help='(int) Delayed Policy UpdateにおけるCriticの更新タイミング. default: 2')
+    parser.add_argument('--sigma-target', type=float, default=0.2, help='(float) Target Policy Smoothing Regularizationのノイズの分散. default: 0.2')
+
     args = parser.parse_args()
 
     if args.device >= 0 and torch.cuda.is_available():
@@ -43,6 +55,7 @@ def get_args():
         args.device = 'cpu'
 
     return args
+
 
 def main():
     args = get_args()
@@ -60,6 +73,14 @@ def main():
     param['optim'] = args.optim
     param['sigma_beta'] = args.sigma_beta
 
+    param['target_ac'] = args.target_ac
+    param['smooth_reg'] = args.smooth_reg
+    param['delay_update'] = args.delay_update
+    param['clip_double'] = args.clip_double
+    param['tau'] = args.tau
+    param['clip'] = args.clip
+    param['delay'] = args.delay
+    param['sigma_target'] = args.sigma_target
 
     # -- 環境のインスタンス生成 --
     env = gym.make('Pendulum-v0')
@@ -83,7 +104,9 @@ def main():
     writer = tbx.SummaryWriter(save_dir)
 
     agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
-                  optim=args.optim, lr=args.lr, gamma=args.gamma, device=args.device, sigma=args.sigma_beta)
+                  optim=args.optim, lr=args.lr, gamma=args.gamma, sigma_beta=args.sigma_beta,
+                  target_ac=args.target_ac,smooth_reg=args.smooth_reg, delay_update=args.delay_update, clip_double=args.clip_double,
+                  tau=args.tau, clip=args.clip, delay=args.delay, sigma_target=args.sigma_target,device=args.device)
 
     # for seed in args.seeds:
     # seedの設定
@@ -109,9 +132,11 @@ def main():
 
     for t in range(int(args.max_step)):
         if args.device == 'cpu':
-            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[0].detach().numpy()
+            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[
+                0].detach().numpy()
         else:
-            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
+            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[
+                0].cpu().detach().numpy()
 
         next_state, reward, done, info = env.step(action)
         replay_buffer.add(state, action, next_state, reward, done)
@@ -126,7 +151,7 @@ def main():
 
             # evaluation
             if episode % args.eval_step == 0:
-                eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes,seed=args.eval_seed)
+                eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes, seed=args.eval_seed)
                 eval_rewards.append(eval_reward)
                 writer.add_scalar("reward", eval_reward.mean(), episode)
                 if agent.actor_loss is not None:
@@ -143,10 +168,11 @@ def main():
             writer.add_scalar("loss/actor_loss", agent.actor_loss, t)
             if t % env._max_episode_steps == 0:
                 print('\r', end='')
-                print(f'\r{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward_:.3f}', end='')
+                print(f'\r{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward_:.3f}',
+                      end='')
 
     env.close()
-    
+
     plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{args.seed}.png'))
     with open(os.path.join(save_dir, f'history_{args.seed}.pickle'), 'wb') as f:
         pickle.dump(eval_rewards, f)
@@ -160,7 +186,6 @@ def main():
     # visualize
     boxplot(rewards, save_episodes, os.path.join(save_dir, f'boxplot_{args.seed}.png'))
 
-    
 
 def boxplot(rewards, labels, path):
     plt.boxplot(rewards, labels=labels, showfliers=False)
@@ -170,19 +195,21 @@ def boxplot(rewards, labels, path):
     plt.savefig(path)
     plt.clf()
 
+
 def plot(rewards, step, path):
     rewards = np.array(rewards)
     x = (np.arange(rewards.shape[0]) + 1) * step
     y = np.percentile(rewards, [0, 25, 50, 75, 100], axis=1)
-    plt.plot(x, y[0], color='black') # min
-    plt.plot(x, y[4], color='black') # max
-    plt.fill_between(x, y[1], y[3], color='gray', alpha=0.5) # 25%, 75%
-    plt.plot(x, y[2], color='red') # mean
+    plt.plot(x, y[0], color='black')  # min
+    plt.plot(x, y[4], color='black')  # max
+    plt.fill_between(x, y[1], y[3], color='gray', alpha=0.5)  # 25%, 75%
+    plt.plot(x, y[2], color='red')  # mean
     plt.title('reward history')
     plt.xlabel('episode')
     plt.ylabel('reward')
     plt.savefig(path)
     plt.clf()
+
 
 if __name__ == '__main__':
     main()
