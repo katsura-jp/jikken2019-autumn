@@ -185,7 +185,6 @@ class TQLAgent(Agent):
             state = env.reset()
             reward_sum = 0. # 累積報酬
             while True:
-                # action = self.select_exploratory_action(state)
                 action = self.select_action(state)
 
                 next_state, reward, done, info = env.step(action)
@@ -332,7 +331,7 @@ class ActorCriticAgent(Agent):
         reward = reward.to(self.device)
 
         # critic trainings
-        x = torch.cat([next_state, self.select_exploratory_action(state)], dim=1).to(self.device)
+        x = torch.cat([next_state, self.select_action(state)], dim=1).to(self.device)
         delta = reward + self.gamma * self.critic(x)
         x = torch.cat([state, action], dim=1).to(self.device)
         critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
@@ -341,7 +340,7 @@ class ActorCriticAgent(Agent):
         self.critic_optim.step()
 
         # actor training
-        x = torch.cat([state, self.select_exploratory_action(state)], dim=1)
+        x = torch.cat([state, self.select_action(state)], dim=1)
         actor_loss = - self.critic(x).mean()  # SGDとプラマイ逆
         self.actor_optim.zero_grad()
         actor_loss.backward()
@@ -525,15 +524,13 @@ class TD3Agent(Agent):
 
         # next actionの計算
         if self.target_ac:
-            next_action = self.target_actor(state) # TODO: ここは行動方策か決定方策か確認
-            next_action = next_action + self._get_noise(next_action.shape[0]).to(next_action.device)
-            x = self._clamp(next_action)
+            next_action = self.target_actor(state)
 
             if self.smooth_reg:
                 next_action = next_action + self._get_target_actor_noise(next_action.shape[0]).to(next_action.device)
                 next_action = self._clamp(next_action)
         else:
-            next_action = self.select_exploratory_action(state)
+            next_action = self.select_action(state)
 
         # ターゲットの計算
         x = torch.cat([next_state, next_action], dim=1).to(self.device)
@@ -564,8 +561,8 @@ class TD3Agent(Agent):
 
         if self.delay_count == self.delay_update:
             # actor training
-            x = torch.cat([state, self.select_exploratory_action(state)], dim=1)
-            actor_loss = - self.critic(x).mean()  # TODO: Clipped Doubleの場合、critic2は使わないのか？
+            x = torch.cat([state, self.select_action(state)], dim=1)
+            actor_loss = - self.critic(x).mean()
 
             self.actor_optim.zero_grad()
             actor_loss.backward()
