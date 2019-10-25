@@ -18,11 +18,6 @@ from agent import TQLAgent as Agent
 from buffer import ReplayBuffer
 from utils import Logger
 
-# TODO: ハイパーパラメータをconfig.jsonとかに保存
-# TODO: 経験再生の追加(どこでenqueue/dequeueするの？)
-# TODO: パラメータ保存
-# TODO: 評価
-# TODO: 学習時間の計測
 
 def get_args():
     parser = argparse.ArgumentParser(description='テーブルQ学習の設定')
@@ -36,15 +31,58 @@ def get_args():
     parser.add_argument('--seeds', type=str, default='2', help='(str) 評価環境のseed値. e.g. --seed 2,3,4 . default: 2')
     parser.add_argument('--save-step', type=int, default=500, help='(int) モデルの保存タイミング. default: 500')
 
+
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
     parser.add_argument('--er', action='store_true', help='経験再生.')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
-    args = parser.parse_args()
+    # 課題3用
+    parser.add_argument('--eps-annealing', action='store_true', help='eps-greedyの確率を変動させる.')
+    parser.add_argument('--eps-gamma', type=float, default=0.99, help='epsilonの減衰率. default: 0.99')
 
+    args = parser.parse_args()
     args.seeds = list(map(int, args.seeds.split(',')))
+
     return args
+
+
+# 課題3用
+class EpsScheduler(object):
+    def __init__(self, agent, max_eps=0.5, min_eps=0.05, gamma=0.99):
+        self.agent = agent
+        self.max_eps = max_eps
+        self.min_eps = min_eps
+        self.gamma = gamma
+
+        self.agent.eps = self.max_eps
+
+        self.eps_history = []
+
+    def step(self):
+        if self.agent.eps <= self.min_eps:
+            self.agent.eps = self.min_eps
+        else:
+            eps = self.agent.eps
+            new_eps = eps * self.gamma
+            if new_eps < self.min_eps:
+                self.agent.eps = self.min_eps
+            else:
+                self.agent.eps = new_eps
+
+        self.eps_history.append(self.agent.eps)
+
+    def plot(self, path):
+        history = np.array(self.eps_history)
+        x = np.arange(history.shape[0]) + 1 # episode
+        y = history
+        plt.plot(x, y, color='black')
+        plt.title('epsilon history')
+        plt.xlabel('episode')
+        plt.ylabel('epsilon')
+        plt.ylim(0.0,1.0)
+        plt.savefig(path)
+        plt.clf()
 
 
 def main():
@@ -62,6 +100,9 @@ def main():
     param['seeds'] = args.seeds
     param['eval_seed'] = args.eval_seed
     param['er'] = args.er
+    # 課題3用
+    param['eps_annealing'] = args.eps_annealing
+    param['eps_gamma'] = args.eps_gamma
 
 
     # -- 環境のインスタンス生成 --
@@ -98,6 +139,9 @@ def main():
                       state_size=args.state_size, action_size=args.action_size,
                       lr=args.lr, gamma=args.gamma, eps=args.eps)
 
+        if args.eps_annealing:
+            scheduler = EpsScheduler(agent, max_eps=0.5, min_eps=args.eps, gamma=args.eps_gamma)
+
         # -- 学習 --
         eval_rewards = []
         save_episodes = []
@@ -105,8 +149,6 @@ def main():
             episode = 1
             state = env.reset()
             for t in tqdm(range(int(args.max_step))):
-                # if episode > 2000:
-                #     import pdb; pdb.set_trace()
                 action = agent.select_exploratory_action(state)
                 next_state, reward, done, info = env.step(action)
                 agent.train(state, action, next_state, reward, done)
@@ -114,6 +156,8 @@ def main():
                 if done:
                     # reset environment
                     state = env.reset()
+                    if args.eps_annealing:
+                        scheduler.step()
                     episode += 1
 
                     # save model
@@ -139,6 +183,8 @@ def main():
                 if done:
                     # reset environment
                     state = env.reset()
+                    if args.eps_annealing:
+                        scheduler.step()
                     episode += 1
 
                     # save model
@@ -160,6 +206,8 @@ def main():
         plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{seed}.png'))
         with open(os.path.join(save_dir, f'history_{seed}.pickle'), 'wb') as f:
             pickle.dump(eval_rewards, f)
+        if args.eps_annealing:
+            scheduler.plot(os.path.join(save_dir, f'eps_annealing.png'))
 
     env.close()
     # -- 評価 --
@@ -170,13 +218,9 @@ def main():
             reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=10, seed=5, mean=False)
             logger.log(f'episode {episode} : reward mean = {reward.mean()}')
             rewards.append(reward)
-            heatmap(agent.q_table, os.path.join(save_dir, f'qtable_{seed}_{episode}.png'))
 
         # visualize
         boxplot(rewards, save_episodes, os.path.join(save_dir, f'boxplot_{seed}.png'))
-        heatmap(agent.update_q_table, os.path.join(save_dir, f'update_qtable_{seed}.png'))
-        hist(agent.update_state, os.path.join(save_dir, f'update_state_{seed}.png'))
-        hist(agent.update_action, os.path.join(save_dir, f'update_action_{seed}.png'))
 
 
 def boxplot(rewards, labels, path):
@@ -198,18 +242,6 @@ def plot(rewards, step, path):
     plt.title('reward history')
     plt.xlabel('episode')
     plt.ylabel('reward')
-    plt.savefig(path)
-    plt.clf()
-
-
-def heatmap(x, path):
-    sns.heatmap(x)
-    plt.savefig(path)
-    plt.clf()
-
-def hist(y, path):
-    x = np.arange(len(y))
-    plt.hist(x, weights=y, bins=len(x), rwidth=0.8)
     plt.savefig(path)
     plt.clf()
 
