@@ -82,10 +82,6 @@ def main():
 
     writer = tbx.SummaryWriter(save_dir)
 
-    agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
-                  optim=args.optim, lr=args.lr, gamma=args.gamma, device=args.device, sigma=args.sigma_beta)
-
-    # for seed in args.seeds:
     # seedの設定
     env.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -94,6 +90,9 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
         torch.backends.cudnn.deterministic = True
+
+    agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
+                  optim=args.optim, lr=args.lr, gamma=args.gamma, device=args.device, sigma=args.sigma_beta)
 
     # replay buffer
     replay_buffer = ReplayBuffer(args.max_step)

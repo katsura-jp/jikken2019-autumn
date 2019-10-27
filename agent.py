@@ -267,7 +267,9 @@ class ActorCriticAgent(Agent):
         state_dim = observation_space.shape[0]
 
         self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
+        self.actor.apply(self._init_agent)
         self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+        self.critic.apply(self._init_agent)
 
         if optim == 'adam':
             self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=lr)
@@ -301,6 +303,13 @@ class ActorCriticAgent(Agent):
     def _get_noise(self, bs):
         noise = self.norm.sample(sample_shape=torch.Size([bs]))
         return noise
+
+    def _init_agent(self, m):
+        # Xavier initialization
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                m.bias.data.fill_(0.01)
 
     def save_models(self, path):
         torch.save({'actor': self.actor.state_dict(),
@@ -388,7 +397,9 @@ class TD3Agent(Agent):
         state_dim = observation_space.shape[0]
 
         self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
+        self.actor.apply(self._init_agent)
         self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+        self.critic.apply(self._init_agent)
 
         if optim == 'adam':
             self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=lr)
@@ -437,11 +448,12 @@ class TD3Agent(Agent):
             pass
 
         if not self.delay_update:
-            self.delay_update = 1
+            self.delay = 1
         self.delay_count = 0
 
         if self.clip_double:
             self.critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+            self.critic2.apply(self._init_agent)
             if self.target_ac:
                 self.target_critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
                 self._init_target_agent(self.critic2, self.target_critic2)
@@ -466,29 +478,52 @@ class TD3Agent(Agent):
         noise = self.norm.sample(sample_shape=torch.Size([bs]))
         return noise
 
+    def _init_agent(self, m):
+        # Xavier initialization
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                m.bias.data.fill_(0.01)
+
     def _init_target_agent(self, agent, target):
-        target.load_state_dict(agent.state_dict)
+        target.load_state_dict(agent.state_dict())
 
     def _update_target(self, agent, target):
         for agent_param, target_param in zip(agent.parameters(), target.parameters()):
-            target_param.data = (1. - self.tau) * target_param.data + self.tau * agent_param.tau
+            target_param.data = (1. - self.tau) * target_param.data + self.tau * agent_param.data
 
     def _get_target_actor_noise(self, bs):
         noise = self.target_actor_noise.sample(sample_shape=torch.Size([bs])).clamp(-self.clip, self.clip)
         return noise
 
-    def _min_critic(self, value1, value2):
-        # Criticの出力
-        return torch.stack([value1, value2], dim=0).min(dim=0).values
-
     def save_models(self, path):
-        torch.save({'actor': self.actor.state_dict(),
-                    'critic': self.critic.state_dict()}, path)
+        weights = {'actor': self.actor.state_dict(),
+                   'critic': self.critic.state_dict()}
+
+        if self.target_ac:
+            weights['target_actor'] = self.target_actor.state_dict()
+            weights['target_critic'] = self.target_critic.state_dict()
+        if self.clip_double:
+            weights['critic2'] = self.critic2.state_dict()
+            if self.target_ac:
+                weights['target_critic2'] = self.target_critic2.state_dict()
+
+        torch.save(weights, path)
 
     def load_models(self, path):
         weights = torch.load(path)
         self.actor.load_state_dict(weights['actor'])
         self.critic.load_state_dict(weights['critic'])
+
+        if self.clip_double:
+            self.critic2.load_state_dict(weights['critic2'])
+            if self.target_ac:
+                self.target_actor.load_state_dict(weights['target_actor'])
+                self.target_critic.load_state_dict(weights['target_critic'])
+                self.target_critic2.load_state_dict(weights['target_critic2'])
+        elif self.target_ac:
+            self.target_actor.load_state_dict(weights['target_actor'])
+            self.target_critic.load_state_dict(weights['target_critic'])
 
     def select_action(self, state):
         x = self.actor(state)
@@ -503,6 +538,7 @@ class TD3Agent(Agent):
     def train(self, state, action, next_state, reward, done):
         self.actor.train()
         self.critic.train()
+
         if self.target_ac:
             self.target_actor.train()
             self.target_critic.train()
@@ -525,7 +561,6 @@ class TD3Agent(Agent):
         # next actionの計算
         if self.target_ac:
             next_action = self.target_actor(state)
-
             if self.smooth_reg:
                 next_action = next_action + self._get_target_actor_noise(next_action.shape[0]).to(next_action.device)
                 next_action = self._clamp(next_action)
@@ -546,20 +581,25 @@ class TD3Agent(Agent):
 
         x = torch.cat([state, action], dim=1).to(self.device)
         critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
-        self.critic_optim.zero_grad()
-        critic_loss.backward()
-        self.critic_optim.step()
-
-        self.critic_loss = critic_loss.item()
 
         if self.clip_double:
             critic2_loss = torch.pow(delta - self.critic2(x), 2).mean()  # MSE
+            self.critic_optim.zero_grad()
             self.critic2_optim.zero_grad()
+            critic_loss.backward(retain_graph=True)
             critic2_loss.backward()
+            self.critic_optim.step()
             self.critic2_optim.step()
+            self.critic_loss = critic_loss.item()
             self.critic2_loss = critic2_loss.item()
+        else:
+            self.critic_optim.zero_grad()
+            critic_loss.backward()
+            self.critic_optim.step()
+            self.critic_loss = critic_loss.item()
 
-        if self.delay_count == self.delay_update:
+
+        if self.delay_count == self.delay:
             # actor training
             x = torch.cat([state, self.select_action(state)], dim=1)
             actor_loss = - self.critic(x).mean()

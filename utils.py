@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import logging
 
-# TODO: Timerの実装
 
 def seed_setting(seed=1029):
     random.seed(seed)
@@ -43,6 +42,4 @@ class Logger(object):
 
     def log(self, text):
         self.logger.info(text)
-
-
 

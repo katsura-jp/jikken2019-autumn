@@ -17,7 +17,7 @@ from buffer import ReplayBuffer, collate_buffer
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Actor-Criticの設定')
+    parser = argparse.ArgumentParser(description='TD3の設定')
 
     parser.add_argument('--max-step', type=float, default=5e+5, help='(int) 最大ステップ数. default: 5e+5')
     parser.add_argument('--gamma', type=float, default=0.99, help='(float) 減衰率. default: 0.99')
@@ -37,10 +37,10 @@ def get_args():
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
 
-    parser.add_argument('--target-ac', action='store_true', help='Target Actor & Target Criticの解除.')
-    parser.add_argument('--smooth-reg', action='store_true', help='Target Policy Smoothing Regularizationの解除.')
-    parser.add_argument('--delay-update', action='store_true', help='Delayed Policy Updateの解除.')
-    parser.add_argument('--clip-double', action='store_true', help='Clipped Double Q-Learningの解除.')
+    parser.add_argument('--target-ac', action='store_false', help='Target Actor & Target Criticの解除.')
+    parser.add_argument('--smooth-reg', action='store_false', help='Target Policy Smoothing Regularizationの解除.')
+    parser.add_argument('--delay-update', action='store_false', help='Delayed Policy Updateの解除.')
+    parser.add_argument('--clip-double', action='store_false', help='Clipped Double Q-Learningの解除.')
 
     parser.add_argument('--tau', type=float, default=0.005, help='(float) ターゲットエージェントの更新割合. default: 0.005')
     parser.add_argument('--clip', type=float, default=0.5, help='(float) Target Policy Smoothing Regularizationのノイズの最大値. default: 0.5')
@@ -87,7 +87,7 @@ def main():
 
     # -- 実験の日時とディレクトリ作成 --
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    save_dir = os.path.join('./log/actor-critic', now)
+    save_dir = os.path.join('./log/td3', now)
     os.makedirs(save_dir, exist_ok=True)
 
     # -- ログの作成 --
@@ -103,12 +103,6 @@ def main():
 
     writer = tbx.SummaryWriter(save_dir)
 
-    agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
-                  optim=args.optim, lr=args.lr, gamma=args.gamma, sigma_beta=args.sigma_beta,
-                  target_ac=args.target_ac,smooth_reg=args.smooth_reg, delay_update=args.delay_update, clip_double=args.clip_double,
-                  tau=args.tau, clip=args.clip, delay=args.delay, sigma_target=args.sigma_target,device=args.device)
-
-    # for seed in args.seeds:
     # seedの設定
     env.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -117,6 +111,13 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
         torch.backends.cudnn.deterministic = True
+
+
+    agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
+                  optim=args.optim, lr=args.lr, gamma=args.gamma, sigma_beta=args.sigma_beta,
+                  target_ac=args.target_ac,smooth_reg=args.smooth_reg, delay_update=args.delay_update, clip_double=args.clip_double,
+                  tau=args.tau, clip=args.clip, delay=args.delay, sigma_target=args.sigma_target,device=args.device)
+
 
     # replay buffer
     replay_buffer = ReplayBuffer(args.max_step)
@@ -147,7 +148,7 @@ def main():
             # save model
             if episode % args.save_step == 0:
                 save_episodes.append(episode)
-                agent.save_models(os.path.join(save_dir, f'actor_critic_{episode}.pth'))
+                agent.save_models(os.path.join(save_dir, f'td3_{episode}.pth'))
 
             # evaluation
             if episode % args.eval_step == 0:
@@ -164,8 +165,11 @@ def main():
             states, actions, next_states, rewards, dones = collate_buffer(replay_buffer, args.batch_size)
             agent.train(states, actions, next_states, rewards, dones)
 
-            writer.add_scalar("loss/critic_loss", agent.critic_loss, t)
-            writer.add_scalar("loss/actor_loss", agent.actor_loss, t)
+
+            writer.add_scalar("loss/critic_loss", agent.critic_loss, t) if agent.critic_loss is not None else None
+            if args.clip_double:
+                writer.add_scalar("loss/critic_loss", agent.critic2_loss, t) if agent.critic2_loss is not None else None
+            writer.add_scalar("loss/actor_loss", agent.actor_loss, t) if agent.actor_loss is not None else None
             if t % env._max_episode_steps == 0:
                 print('\r', end='')
                 print(f'\r{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward_:.3f}',
@@ -179,7 +183,7 @@ def main():
 
     rewards = []
     for episode in save_episodes:
-        agent.load_models(os.path.join(save_dir, f'actor_critic_{episode}.pth'))
+        agent.load_models(os.path.join(save_dir, f'td3_{episode}.pth'))
         reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes, seed=args.eval_seed)
         rewards.append(reward)
 
