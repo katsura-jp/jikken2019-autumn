@@ -30,7 +30,10 @@ RUN apt-get install -y --no-install-recommends \
     libxrender1 \
     libncurses5-dev \
     libncursesw5-dev \
-    libglib2.0-0
+    libglib2.0-0 \
+    libgl1-mesa-dev \
+    libharfbuzz0b \
+    libpcre16-3
 
 # install Python
 RUN apt-get install -y --no-install-recommends \

@@ -156,7 +156,7 @@ def main():
 
             # evaluation
             if episode % args.eval_step == 0:
-                eval_reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes, seed=args.eval_seed)
+                eval_reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed)
                 eval_rewards.append(eval_reward)
                 writer.add_scalar("reward", eval_reward.mean(), episode)
                 if agent.actor_loss is not None:
@@ -188,7 +188,7 @@ def main():
     rewards = []
     for episode in save_episodes:
         agent.load_models(os.path.join(save_dir, f'td3_{episode}.pth'))
-        reward = agent.eval(env=gym.make('Pendulum-v0'), n_episode=args.eval_episodes, seed=args.eval_seed)
+        reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed)
         rewards.append(reward)
 
     # visualize
