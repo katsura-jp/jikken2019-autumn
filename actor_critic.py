@@ -6,6 +6,7 @@ import argparse
 import torch
 import tensorboardX as tbx
 import numpy as np
+import roboschool
 import gym
 import pickle
 
@@ -35,6 +36,7 @@ def get_args():
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
 
+    parser.add_argument('--env', type=str, default='Pendulum-v0', help='(str) Gymにおける環境名. default: Pendulum-v0')
     args = parser.parse_args()
 
     if args.device >= 0 and torch.cuda.is_available():
@@ -59,10 +61,11 @@ def main():
     param['expl'] = args.expl
     param['optim'] = args.optim
     param['sigma_beta'] = args.sigma_beta
+    param['env'] = args.env
 
 
     # -- 環境のインスタンス生成 --
-    env = gym.make('Pendulum-v0')
+    env = gym.make(args.env)
 
     # -- 実験の日時とディレクトリ作成 --
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')

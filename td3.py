@@ -6,6 +6,7 @@ import argparse
 import torch
 import tensorboardX as tbx
 import numpy as np
+import roboschool
 import gym
 import pickle
 
@@ -47,6 +48,7 @@ def get_args():
     parser.add_argument('--delay', type=int, default=2, help='(int) Delayed Policy UpdateにおけるCriticの更新タイミング. default: 2')
     parser.add_argument('--sigma-target', type=float, default=0.2, help='(float) Target Policy Smoothing Regularizationのノイズの分散. default: 0.2')
 
+    parser.add_argument('--env', type=str, default='Pendulum-v0', help='(str) Gymにおける環境名. default: Pendulum-v0')
     args = parser.parse_args()
 
     if args.device >= 0 and torch.cuda.is_available():
@@ -82,8 +84,10 @@ def main():
     param['delay'] = args.delay
     param['sigma_target'] = args.sigma_target
 
+    param['env'] = args.env
+
     # -- 環境のインスタンス生成 --
-    env = gym.make('Pendulum-v0')
+    env = gym.make(args.env)
 
     # -- 実験の日時とディレクトリ作成 --
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
