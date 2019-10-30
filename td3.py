@@ -2,6 +2,7 @@ import os
 import random
 import datetime
 import argparse
+import json
 
 import torch
 import tensorboardX as tbx
@@ -31,6 +32,11 @@ def get_args():
     parser.add_argument('--optim', type=str, default='adam', choices=['adam', 'sgd', 'momentum_sgd'],
                         help='(str) 最適化関数. adam, sgd, momentum_sgdから選択. default: adam')
     parser.add_argument('--sigma-beta', type=float, default=0.1, help='(float) ⾏動⽅策のノイズ. default: 0.1')
+
+    parser.add_argument('--actor-layer', type=int, default=2, help='(int) Actorのネットワーク層の数. default: 2')
+    parser.add_argument('--critic-layer', type=int, default=3, help='(int) Criticのネットワーク層の数. default: 3')
+    parser.add_argument('--actor-dim', type=int, default=256, help='(int) Actorの中間層の次元数. default: 256')
+    parser.add_argument('--critic-dim', type=int, default=256, help='(int) Criticの中間層の次元数. default: 256')
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
@@ -63,7 +69,7 @@ def main():
     args = get_args()
     # -- ハイパーパラメータ --
     param = dict()
-    param['model'] = 'Actor-Critic'
+    param['model'] = 'TD3'
     param['max_step'] = args.max_step
     param['gamma'] = args.gamma
     param['lr'] = args.lr
@@ -74,6 +80,11 @@ def main():
     param['expl'] = args.expl
     param['optim'] = args.optim
     param['sigma_beta'] = args.sigma_beta
+
+    param['actor_layer'] = args.actor_layer
+    param['critic_layer'] = args.critic_layer
+    param['actor_hidden_dim'] = args.actor_dim
+    param['critic_hidden_dim'] = args.critic_dim
 
     param['target_ac'] = args.target_ac
     param['smooth_reg'] = args.smooth_reg
@@ -93,6 +104,10 @@ def main():
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     save_dir = os.path.join('./log/td3', now)
     os.makedirs(save_dir, exist_ok=True)
+
+    # ハイパーパラメータの保存
+    with open(os.path.join(save_dir, 'hyperparam.json'), 'w') as f:
+        json.dump(param, f, indent=4)
 
     # -- ログの作成 --
     logger = Logger(os.path.join(save_dir, 'experiment.log'))
@@ -119,6 +134,8 @@ def main():
 
     agent = Agent(action_space=env.action_space, observation_space=env.observation_space,
                   optim=args.optim, lr=args.lr, gamma=args.gamma, sigma_beta=args.sigma_beta,
+                  actor_layer=args.actor_layer, critic_layer=args.critic_layer,
+                  actor_hidden_dim=args.actor_dim, critic_hidden_dim=args.critic_dim,
                   target_ac=args.target_ac,smooth_reg=args.smooth_reg, delay_update=args.delay_update, clip_double=args.clip_double,
                   tau=args.tau, clip=args.clip, delay=args.delay, sigma_target=args.sigma_target,device=args.device)
 
