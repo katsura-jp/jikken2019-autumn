@@ -205,13 +205,23 @@ class TQLAgent(Agent):
 # Actor-Critic
 
 class ActorNet(nn.Module):
-    def __init__(self, action_space, inplaces, places, hidden_dim=256):
+    def __init__(self, action_space, inplaces, places, hidden_dim=256, n_layer=2):
         super(ActorNet, self).__init__()
 
         self.action_space = action_space
         self.hidden_dim = hidden_dim
 
         # NN(Actorは2層)
+        layers = []
+        layers.append(nn.Linear(inplaces, hidden_dim))
+        layers.append(nn.ReLU(inplace=True))
+        for n in range(1, n_layer-1):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.Linear(hidden_dim, places))
+        layers.append(ActorCriticTanh(self.action_space.high, self.action_space.low))
+        self.layers = nn.Sequential(*layers)
+
         self.fc1 = nn.Linear(inplaces, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, places)
         self.relu = nn.ReLU(inplace=True)
@@ -219,28 +229,39 @@ class ActorNet(nn.Module):
 
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
-        x = self.activation(x)
+        # x = self.fc1(x)
+        # x = self.relu(x)
+        # x = self.fc2(x)
+        # x = self.activation(x)
+        x = self.layers(x)
         return x
 
 
 
 class CriticNet(nn.Module):
-    def __init__(self, inplaces, places, hidden_dim=256):
+    def __init__(self, inplaces, places, hidden_dim=256, n_layer=3):
         super(CriticNet, self).__init__()
 
         # NN(Actorは2層)
+        layers = []
+        layers.append(nn.Linear(inplaces, hidden_dim))
+        layers.append(nn.ReLU(inplace=True))
+        for n in range(1, n_layer-1):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.Linear(hidden_dim, places))
+        self.layers = nn.Sequential(*layers)
+
         self.fc1 = nn.Linear(inplaces, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, places)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self,x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc3(x)
+        # x = self.relu(self.fc1(x))
+        # x = self.relu(self.fc2(x))
+        # x = self.fc3(x)
+        x = self.layers(x)
         return x
 
 
@@ -259,16 +280,17 @@ class ActorCriticTanh(nn.Module):
 
 
 class ActorCriticAgent(Agent):
-    def __init__(self, action_space, observation_space, optim, lr, gamma, device='cpu', sigma=0.1):
+    def __init__(self, action_space, observation_space, optim, lr, gamma, device='cpu', sigma=0.1,
+                 critic_layer=3, actor_layer=2, critic_hidden_dim=256, actor_hidden_dim=256):
         self.action_space = action_space
         self.observation_space = observation_space
 
         action_dim = action_space.shape[0]
         state_dim = observation_space.shape[0]
 
-        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
+        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=actor_hidden_dim, n_layer=actor_layer).to(device)
         self.actor.apply(self._init_agent)
-        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=critic_hidden_dim, n_layer=critic_layer).to(device)
         self.critic.apply(self._init_agent)
 
         if optim == 'adam':
@@ -388,6 +410,7 @@ class TD3Agent(Agent):
     def __init__(self, action_space, observation_space, optim, lr, gamma, sigma_beta=0.1,
                  target_ac=True, smooth_reg=True, delay_update=True, clip_double=True,
                  tau=0.005, clip=0.5, delay=2, sigma_target=0.2,
+                 critic_layer=3, actor_layer=2, critic_hidden_dim=256, actor_hidden_dim=256,
                  device='cpu'):
 
         self.action_space = action_space
@@ -396,9 +419,9 @@ class TD3Agent(Agent):
         action_dim = action_space.shape[0]
         state_dim = observation_space.shape[0]
 
-        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
+        self.actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=actor_hidden_dim, n_layer=actor_layer).to(device)
         self.actor.apply(self._init_agent)
-        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+        self.critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=critic_hidden_dim, n_layer=critic_layer).to(device)
         self.critic.apply(self._init_agent)
 
         if optim == 'adam':
@@ -438,8 +461,8 @@ class TD3Agent(Agent):
 
         # 条件によるオブジェクトの生成
         if self.target_ac: # Target Actor & Target Critic
-            self.target_actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=256).to(device)
-            self.target_critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+            self.target_actor = ActorNet(action_space=action_space, inplaces=state_dim, places=action_dim, hidden_dim=actor_hidden_dim, n_layer=actor_layer).to(device)
+            self.target_critic = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=critic_hidden_dim, n_layer=critic_layer).to(device)
             self._init_target_agent(self.actor, self.target_actor)
             self._init_target_agent(self.critic, self.target_critic)
 
@@ -452,10 +475,10 @@ class TD3Agent(Agent):
         self.delay_count = 0
 
         if self.clip_double:
-            self.critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+            self.critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=critic_hidden_dim, n_layer=critic_layer).to(device)
             self.critic2.apply(self._init_agent)
             if self.target_ac:
-                self.target_critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=256).to(device)
+                self.target_critic2 = CriticNet(inplaces=state_dim + action_dim, places=1, hidden_dim=critic_hidden_dim, n_layer=critic_layer).to(device)
                 self._init_target_agent(self.critic2, self.target_critic2)
 
             self.critic2_loss = None
@@ -583,13 +606,19 @@ class TD3Agent(Agent):
         critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
 
         if self.clip_double:
-            critic2_loss = torch.pow(delta - self.critic2(x), 2).mean()  # MSE
+            # critic2の損失計算
+            delta2 = delta.clone().detach()
+            x2 = x.clone().detach()
+            critic2_loss = torch.pow(delta2 - self.critic2(x2), 2).mean()  # MSE
+
             self.critic_optim.zero_grad()
-            self.critic2_optim.zero_grad()
-            critic_loss.backward(retain_graph=True)
-            critic2_loss.backward()
+            critic_loss.backward()
             self.critic_optim.step()
+
+            self.critic2_optim.zero_grad()
+            critic2_loss.backward()
             self.critic2_optim.step()
+
             self.critic_loss = critic_loss.item()
             self.critic2_loss = critic2_loss.item()
         else:
