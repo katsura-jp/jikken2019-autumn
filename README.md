@@ -1,30 +1,16 @@
 # jikken2019-autumn
-主専攻実験（秋）　強化学習
+2019年度　主専攻実験（秋）強化学習
 
-## Env
-### [Pendulum-v0](https://github.com/openai/gym/blob/master/gym/envs/classic_control/pendulum.py#L7)
-
-- Action
-
-  - 次元数 : 1
-    - 方向+強さ
-  - 空間
-    - 方向+強さ : [-2, 2]
-
-- State
-
-  - 次元数 : 3
-
-    - [cos, sin, 角速度]
-
-  - 空間
-
-    - cos : [-1, 1]
-
-    - sin : [-1, 1]
-
-    - 角速度 $\dot{\theta}$ : [-8, 8]
-
+## 環境
+#### Pendulum-v0
+- 状態空間の次元数: 3
+- 行動空間の次元数: 1
+#### BipedalWalker-v2
+- 状態空間の次元数: 24
+- 行動空間の次元数: 4
+#### RoboschoolHumanoid-v1
+- 状態空間の次元数: 44
+- 行動空間の次元数: 17
 
 ## Docker
 ```
@@ -70,4 +56,5 @@ $ python td3.py --eval-episodes 50 --seed 2 --device 0 --clip-double
 ## 任意の環境での学習
 ```shell
 $ python actor_critic.py --eval-episodes 50 --seed 2 --device 0 --env BipedalWalker-v2
+$ python actor_critic.py --eval-episodes 50 --seed 2 --device 0 --env RoboschoolHumanoid-v1
 ```
