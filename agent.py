@@ -381,7 +381,7 @@ class ActorCriticAgent(Agent):
         self.critic_loss = critic_loss.item()
         self.actor_loss = actor_loss.item()
 
-    def eval(self, env, n_episode, seed):
+    def eval(self, env, n_episode, seed, mean=False):
         rewards = []  # 各エピソードの累積報酬を格納する
         env.seed(seed)
         self.actor.eval()
@@ -389,6 +389,7 @@ class ActorCriticAgent(Agent):
             for e in range(n_episode):
                 state = env.reset()
                 reward_sum = 0.  # 累積報酬
+                step = 0
                 while True:
                     if self.device == 'cpu':
                         action = self.select_action(torch.tensor([state], dtype=torch.float32).to(self.device))[0].detach().numpy()
@@ -398,7 +399,10 @@ class ActorCriticAgent(Agent):
                     next_state, reward, done, info = env.step(action)
                     reward_sum += self.gamma * reward
                     state = next_state
+                    step += 1
                     if done:
+                        if mean:
+                            reward_sum = reward_sum / step
                         break
                 rewards.append(reward_sum)
         env.close()
@@ -645,7 +649,7 @@ class TD3Agent(Agent):
             self.delay_count = 0
 
 
-    def eval(self, env, n_episode, seed):
+    def eval(self, env, n_episode, seed, mean=False):
         rewards = []  # 各エピソードの累積報酬を格納する
         env.seed(seed)
         self.actor.eval()
@@ -653,6 +657,7 @@ class TD3Agent(Agent):
             for e in range(n_episode):
                 state = env.reset()
                 reward_sum = 0.  # 累積報酬
+                step = 0
                 while True:
                     if self.device == 'cpu':
                         action = self.select_action(torch.tensor([state], dtype=torch.float32).to(self.device))[
@@ -664,7 +669,10 @@ class TD3Agent(Agent):
                     next_state, reward, done, info = env.step(action)
                     reward_sum += self.gamma * reward
                     state = next_state
+                    step += 1
                     if done:
+                        if mean:
+                            reward_sum = reward_sum / step
                         break
                 rewards.append(reward_sum)
         env.close()

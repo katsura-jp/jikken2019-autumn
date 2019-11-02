@@ -245,6 +245,5 @@ def plot(rewards, step, path):
     plt.savefig(path)
     plt.clf()
 
-
 if __name__ == '__main__':
     main()

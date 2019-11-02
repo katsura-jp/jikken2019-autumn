@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
-
+    parser.add_argument('--div-step', action='store_true', help='評価時の累積報酬和をstep数で破る.')
 
     parser.add_argument('--target-ac', action='store_false', help='Target Actor & Target Criticの解除.')
     parser.add_argument('--smooth-reg', action='store_false', help='Target Policy Smoothing Regularizationの解除.')
@@ -80,6 +80,7 @@ def main():
     param['expl'] = args.expl
     param['optim'] = args.optim
     param['sigma_beta'] = args.sigma_beta
+    param['div_step'] = args.div_step
 
     param['actor_layer'] = args.actor_layer
     param['critic_layer'] = args.critic_layer
@@ -148,6 +149,10 @@ def main():
     episode = 1
     save_episodes = []
     eval_rewards = []
+    train_actor_loss = []
+    train_critic_loss = []
+    if args.clip_double:
+        train_critic2_loss = []
     eval_reward_ = -10000.00
 
     logger.log('   Step   | Episode | L(actor) | L(critic) | reward ')
@@ -173,7 +178,7 @@ def main():
 
             # evaluation
             if episode % args.eval_step == 0:
-                eval_reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed)
+                eval_reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed, mean=args.div_step)
                 eval_rewards.append(eval_reward)
                 writer.add_scalar("reward", eval_reward.mean(), episode)
                 if agent.actor_loss is not None:
@@ -195,17 +200,28 @@ def main():
                 print('\r', end='')
                 print(f'\r{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward_:.3f}',
                       end='')
+            train_critic_loss.append(agent.critic_loss) if agent.critic_loss is not None else None
+            train_actor_loss.append(agent.actor_loss) if agent.actor_loss is not None else None
+            if args.clip_double:
+                train_critic2_loss.append(agent.critic2_loss) if agent.critic2_loss is not None else None
 
     env.close()
 
     plot(eval_rewards, args.eval_step, os.path.join(save_dir, f'plot_{args.seed}.png'))
     with open(os.path.join(save_dir, f'history_{args.seed}.pickle'), 'wb') as f:
         pickle.dump(eval_rewards, f)
+    with open(os.path.join(save_dir, f'actor_loss_{args.seed}.pickle'), 'wb') as f:
+        pickle.dump(train_actor_loss, f)
+    with open(os.path.join(save_dir, f'critic_loss_{args.seed}.pickle'), 'wb') as f:
+        pickle.dump(train_critic_loss, f)
+    if args.clip_double:
+        with open(os.path.join(save_dir, f'critic2_loss_{args.seed}.pickle'), 'wb') as f:
+            pickle.dump(train_critic2_loss, f)
 
     rewards = []
     for episode in save_episodes:
         agent.load_models(os.path.join(save_dir, f'td3_{episode}.pth'))
-        reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed)
+        reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed, mean=args.div_step)
         rewards.append(reward)
 
     # visualize

@@ -52,32 +52,3 @@ def collate_buffer(buffer, batch_size):
     dones = torch.stack(dones, dim=0)
 
     return states, actions, next_states, rewards, dones
-
-
-def test_replay_buffer():
-    import gym
-    env = gym.make('Pendulum-v0')
-
-    buffer = ReplayBuffer(1000)
-    state = env.reset()
-    for _ in range(500):
-        action = env.action_space.sample()
-        next_state, reward, done, info = env.step(action)
-
-        # cast to torch.tensor
-        # state = torch.tensor(state, dtype=torch.float32)
-        # action = torch.tensor(action, dtype=torch.float32)
-        # next_state = torch.tensor(next_state, dtype=torch.float32)
-        # reward = torch.tensor([reward], dtype=torch.float32)
-        # done = torch.tensor([done], dtype=torch.bool)
-
-        buffer.add(state, action, next_state, reward, done)
-        state = next_state
-
-    states, actions, next_states, rewards, dones = collate_buffer(buffer, 64)
-
-
-
-
-if __name__ == '__main__':
-    test_replay_buffer()
