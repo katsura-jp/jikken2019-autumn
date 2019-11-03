@@ -39,7 +39,7 @@ def get_args():
     parser.add_argument('--critic-dim', type=int, default=256, help='(int) Criticの中間層の次元数. default: 256')
 
     parser.add_argument('--eval-seed', type=int, default=5, help='(int) 学習環境のseed値. default: 5')
-    parser.add_argument('--eval-step', type=int, default=100, help='(int) 評価のタイミング. default: 100')
+    parser.add_argument('--eval-step', type=int, default=10000, help='(int) 評価のタイミング. default: 10000')
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
     parser.add_argument('--div-step', action='store_true', help='評価時の累積報酬和をstep数で破る.')
@@ -176,16 +176,16 @@ def main():
                 save_episodes.append(episode)
                 agent.save_models(os.path.join(save_dir, f'td3_{episode}.pth'))
 
-            # evaluation
-            if episode % args.eval_step == 0:
-                eval_reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed, mean=args.div_step)
-                eval_rewards.append(eval_reward)
-                writer.add_scalar("reward", eval_reward.mean(), episode)
-                if agent.actor_loss is not None:
-                    print('\r', end='')
-                    logger.log(
-                        f'{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward.mean():.3f}')
-                eval_reward_ = eval_reward.mean()
+        # evaluation
+        if t % args.eval_step == 0:
+            eval_reward = agent.eval(env=gym.make(args.env), n_episode=args.eval_episodes, seed=args.eval_seed, mean=args.div_step)
+            eval_rewards.append(eval_reward)
+            writer.add_scalar("reward", eval_reward.mean(), episode)
+            if agent.actor_loss is not None:
+                print('\r', end='')
+                logger.log(
+                    f'{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward.mean():.3f}')
+            eval_reward_ = eval_reward.mean()
 
         if len(replay_buffer) > args.batch_size and t > args.expl:
             states, actions, next_states, rewards, dones = collate_buffer(replay_buffer, args.batch_size)
