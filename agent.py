@@ -1,6 +1,5 @@
 import numpy as np
 import pickle
-import gym
 import torch
 import torch.nn as nn
 import torch.distributions.normal as normal
@@ -211,7 +210,6 @@ class ActorNet(nn.Module):
         self.action_space = action_space
         self.hidden_dim = hidden_dim
 
-        # NN(Actorは2層)
         layers = []
         layers.append(nn.Linear(inplaces, hidden_dim))
         layers.append(nn.ReLU(inplace=True))
@@ -222,17 +220,7 @@ class ActorNet(nn.Module):
         layers.append(ActorCriticTanh(self.action_space.high, self.action_space.low))
         self.layers = nn.Sequential(*layers)
 
-        self.fc1 = nn.Linear(inplaces, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, places)
-        self.relu = nn.ReLU(inplace=True)
-        self.activation = ActorCriticTanh(self.action_space.high, self.action_space.low)
-
-
     def forward(self, x):
-        # x = self.fc1(x)
-        # x = self.relu(x)
-        # x = self.fc2(x)
-        # x = self.activation(x)
         x = self.layers(x)
         return x
 
@@ -242,7 +230,6 @@ class CriticNet(nn.Module):
     def __init__(self, inplaces, places, hidden_dim=256, n_layer=3):
         super(CriticNet, self).__init__()
 
-        # NN(Actorは2層)
         layers = []
         layers.append(nn.Linear(inplaces, hidden_dim))
         layers.append(nn.ReLU(inplace=True))
@@ -252,15 +239,7 @@ class CriticNet(nn.Module):
         layers.append(nn.Linear(hidden_dim, places))
         self.layers = nn.Sequential(*layers)
 
-        self.fc1 = nn.Linear(inplaces, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, places)
-        self.relu = nn.ReLU(inplace=True)
-
     def forward(self,x):
-        # x = self.relu(self.fc1(x))
-        # x = self.relu(self.fc2(x))
-        # x = self.fc3(x)
         x = self.layers(x)
         return x
 
@@ -678,30 +657,3 @@ class TD3Agent(Agent):
         env.close()
         rewards = np.array(rewards)
         return rewards
-
-# --- test codes ---
-
-def test_agent():
-    import datetime
-    import os
-
-    env = gym.make('Pendulum-v0')
-    agent = ActorCriticAgent(action_space=env.action_space, observation_space=env.observation_space,
-                  optim='adam', lr=3e-4, gamma=0.99, device='cpu')
-    now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    save_dir = os.path.join('./log/test_agent', now)
-    os.makedirs(save_dir, exist_ok=True)
-
-    path = os.path.join(save_dir, f'actor_critic.pth')
-    agent.save_models(path)
-    print('save model')
-    agent.load_models(path)
-    print('load model')
-
-
-
-
-
-if __name__ == '__main__':
-    test_agent()
-    pass
