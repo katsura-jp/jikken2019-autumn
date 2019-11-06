@@ -54,3 +54,17 @@ RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
 
 RUN echo 'alias pip=pip3.6' >> ~/.bashrc
 RUN source ~/.bashrc
+
+RUN pip install -U gym==0.14.0 \
+    matplotlib==3.1.1 \
+    tensorflow==1.14.0 \
+    jupyterlab==1.1.4 \
+    torch==1.2.0 \
+    torchvision==0.4.0 \
+    numpy==1.17.2 \
+    tqdm==4.36.1 \
+    seaborn==0.9.0 \
+    roboschool==1.0.48 \
+    box2d-py==2.3.8 \
+    tensorboardX==1.9
+
