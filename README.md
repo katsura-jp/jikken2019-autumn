@@ -16,8 +16,6 @@
 ```
 $ sudo docker build -t="<user>/jikken-autumn:latest" ./
 $ docker run -it --rm --gpus all --name reinforce_learning --shm-size 16G -v $PWD:/home/ -w /home/ <user>/jikken-autumn:latest /bin/bash
-
-# pip install -r requirements.txt
 ```
 
 ## 経験再生を使用しないテーブルQ学習
@@ -55,6 +53,6 @@ $ python td3.py --eval-episodes 50 --seed 2 --device 0 --clip-double
 
 ## 任意の環境での学習
 ```shell
-$ python actor_critic.py --eval-episodes 50 --seed 2 --device 0 --env BipedalWalker-v2
-$ python actor_critic.py --eval-episodes 50 --seed 2 --device 0 --env RoboschoolHumanoid-v1
+$ python actor_critic.py --device 0 --eval-episodes 50  --seed 2 --env BipedalWalker-v2 --save-step 300 --div-step
+$ python td3.py --device 0 --eval-episodes 50  --seed 2 --env BipedalWalker-v2 --save-step 300 --div-step
 ```
