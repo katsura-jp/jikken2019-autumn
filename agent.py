@@ -341,7 +341,7 @@ class ActorCriticAgent(Agent):
         reward = reward.to(self.device)
 
         # critic trainings
-        x = torch.cat([next_state, self.select_action(state)], dim=1).to(self.device)
+        x = torch.cat([next_state, self.select_action(next_state)], dim=1).to(self.device)
         delta = reward + self.gamma * self.critic(x)
         x = torch.cat([state, action], dim=1).to(self.device)
         critic_loss = torch.pow(delta - self.critic(x), 2).mean()  # MSE
@@ -566,12 +566,12 @@ class TD3Agent(Agent):
 
         # next actionの計算
         if self.target_ac:
-            next_action = self.target_actor(state)
+            next_action = self.target_actor(next_state)
             if self.smooth_reg:
                 next_action = next_action + self._get_target_actor_noise(next_action.shape[0]).to(next_action.device)
                 next_action = self._clamp(next_action)
         else:
-            next_action = self.select_action(state)
+            next_action = self.select_action(next_state)
 
         # ターゲットの計算
         x = torch.cat([next_state, next_action], dim=1).to(self.device)
