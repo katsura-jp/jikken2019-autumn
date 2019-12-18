@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument('--eval-step', type=int, default=10000, help='(int) 評価のタイミング. default: 10000')
     parser.add_argument('--eval-episodes', type=int, default=10, help='(int) 評価のエピソード数. default: 10')
     parser.add_argument('--batch-size', type=int, default=256, help='(int) 経験再生におけるバッチサイズ. default: 256')
-    parser.add_argument('--div-step', action='store_true', help='評価時の累積報酬和をstep数で破る.')
+    parser.add_argument('--div-step', action='store_true', help='評価時の割引報酬和をstep数で破る.')
 
     parser.add_argument('--target-ac', action='store_false', help='Target Actor & Target Criticの解除.')
     parser.add_argument('--smooth-reg', action='store_false', help='Target Policy Smoothing Regularizationの解除.')
@@ -158,12 +158,14 @@ def main():
     logger.log('   Step   | Episode | L(actor) | L(critic) | reward ')
 
     for t in range(int(args.max_step)):
-        if args.device == 'cpu':
-            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[
-                0].detach().numpy()
+        if t < args.expl:
+            # ランダム行動
+            action = env.action_space.sample()
         else:
-            action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[
-                0].cpu().detach().numpy()
+            if args.device == 'cpu':
+                action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[0].detach().numpy()
+            else:
+                action = agent.select_exploratory_action(torch.tensor([state], dtype=torch.float32).to(args.device))[0].cpu().detach().numpy()
 
         next_state, reward, done, info = env.step(action)
         replay_buffer.add(state, action, next_state, reward, done)
@@ -187,7 +189,7 @@ def main():
                     f'{t:8}  | {episode:7} | {agent.actor_loss:.7} |  {agent.critic_loss:.7} | {eval_reward.mean():.3f}')
             eval_reward_ = eval_reward.mean()
 
-        if len(replay_buffer) > args.batch_size and t > args.expl:
+        if len(replay_buffer) > args.batch_size:
             states, actions, next_states, rewards, dones = collate_buffer(replay_buffer, args.batch_size)
             agent.train(states, actions, next_states, rewards, dones)
 
