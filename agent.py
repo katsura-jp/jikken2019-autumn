@@ -43,11 +43,11 @@ class RandomAgent(Agent):
 
     def eval(self, env, n_episode=10, n_step=1000, seed=5, mean=True):
         # 4.1.5 エージェント評価用関数の実装
-        rewards = [] # 各エピソードの累積報酬を格納する
+        rewards = [] # 各エピソードの割引報酬を格納する
         env.seed(seed)
         for e in range(n_episode):
             state = env.reset()
-            reward_sum = 0. # 累積報酬
+            reward_sum = 0. # 割引報酬
             for i in range(n_step):
                 action = self.select_exploratory_action(state)
                 # action = self.select_action(state)
@@ -178,11 +178,11 @@ class TQLAgent(Agent):
 
 
     def eval(self, env, n_episode=10, seed=5, mean=True):
-        rewards = []  # 各エピソードの累積報酬を格納する
+        rewards = []  # 各エピソードの割引報酬を格納する
         env.seed(seed)
         for e in range(n_episode):
             state = env.reset()
-            reward_sum = 0. # 累積報酬
+            reward_sum = 0. # 割引報酬
             while True:
                 action = self.select_action(state)
 
@@ -361,13 +361,13 @@ class ActorCriticAgent(Agent):
         self.actor_loss = actor_loss.item()
 
     def eval(self, env, n_episode, seed, mean=False):
-        rewards = []  # 各エピソードの累積報酬を格納する
+        rewards = []  # 各エピソードの割引報酬を格納する
         env.seed(seed)
         self.actor.eval()
         with torch.no_grad():
             for e in range(n_episode):
                 state = env.reset()
-                reward_sum = 0.  # 累積報酬
+                reward_sum = 0.  # 割引報酬
                 step = 0
                 while True:
                     if self.device == 'cpu':
@@ -629,13 +629,13 @@ class TD3Agent(Agent):
 
 
     def eval(self, env, n_episode, seed, mean=False):
-        rewards = []  # 各エピソードの累積報酬を格納する
+        rewards = []  # 各エピソードの割引報酬を格納する
         env.seed(seed)
         self.actor.eval()
         with torch.no_grad():
             for e in range(n_episode):
                 state = env.reset()
-                reward_sum = 0.  # 累積報酬
+                reward_sum = 0.  # 割引報酬
                 step = 0
                 while True:
                     if self.device == 'cpu':
