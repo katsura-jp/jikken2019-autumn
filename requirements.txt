@@ -1,7 +1,7 @@
 gym == 0.14.0
 matplotlib == 3.1.1
 tensorflow == 1.14.0
-jupyterlab == 1.1.4
+jupyterlab == 1.2.21
 torch == 1.2.0
 torchvision == 0.4.0
 numpy == 1.17.2
